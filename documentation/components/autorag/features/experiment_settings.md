@@ -116,12 +116,10 @@ Hybrid trial outcome (structure-aware chunks + Docling contextualization):
 }
 ```
 
-Docling extraction settings are applied in **`text_extraction`** and are not repeated per pattern in `pattern.json`; they are fixed for the pipeline run by the chosen preset.
+### Notes
 
-**Benchmark concurrency:** Each pattern evaluation runs benchmark questions through ai4rag [`query_rag`](https://github.com/IBM/ai4rag/blob/main/ai4rag/core/experiment/utils.py) (`ThreadPoolExecutor`, configurable **`max_threads`**). Each worker performs retrieval plus one generation LLM call with up to `number_of_chunks` strings in the prompt. The pipeline preset maps **`max_threads`** into ai4rag (implementation tracked separately in ai4rag). Indexing embeddings use batched API calls; Unitxt evaluation uses batch `evaluate()`, not this thread pool.
+- **Docling extraction** (`text_extraction`) is fixed per pipeline run by the preset — not repeated in each `pattern.json`.
+- **Benchmark concurrency:** preset sets ai4rag `query_rag` **`max_threads`** (`speed`: 10, `balanced`: 4). Each thread = one retrieval + generation call; indexing and Unitxt eval use their own batching, not this pool.
+- **Cost:** `balanced` costs more at ingestion (two chunking methods + LLM context per chunk). Use `speed` for plain text or quick runs; `balanced` for structured PDFs/DOCX with tables and headings.
 
-> **Cost note:** `balanced` increases ingestion time and LLM usage (context generation per chunk) compared to `speed`, and explores two chunking families (`recursive` and `hybrid`). Both presets target the same **8 vCPU / 32 GiB** step sizing. Prefer `speed` for plain-text corpora or exploratory runs; use `balanced` when documents contain tables, headings, and multi-section structure where native Docling chunking may win.
-
----
-
-When in doubt, prefer the **README and `pipeline.py` on the exact branch or tag** of pipelines-components that ships with your OpenShift AI version.
+Verify parameters on the **pipelines-components** README / `pipeline.py` for your OpenShift AI version.
