@@ -12,9 +12,7 @@
 
 ## Context
 
-During **`rag_templates_optimization`**, ai4rag scores each RAG pattern on a benchmark; aggregates land in **`pattern.json`** → `scores`, per-row detail in **`evaluation_results.json`**, and GAM ranks patterns by **`optimization_metric`**. Today this uses **`UnitxtEvaluator`**; this design makes **`judge`** the default evaluator going forward.
-
-Unitxt works for regression and leaderboards but rubrics are opaque, fixed, and coupled to the generation path.
+During **`rag_templates_optimization`**, ai4rag scores each RAG pattern on a benchmark; aggregates land in **`pattern.json`** → `scores`, per-row detail in **`evaluation_results.json`**, and GAM ranks patterns by **`optimization_metric`**. Today this uses **`UnitxtEvaluator`**; this design adds **`judge`** evaluator going forward.
 
 **LLMaJ** adds an explicit **judge model** that scores `(question, contexts, answer[, ground_truth])` using judge rubrics (bundled **default** profile in ai4rag for the standard trio). Prefer a judge distinct from the **generation** model; when only one model is deployed, **`judge_model_id` may equal `generation.model_id`**.
 
@@ -117,13 +115,21 @@ Adds **`evaluation`** and **`scores.overall_score`** to the existing schema ([fu
   "duration_seconds": 120.5,
   "settings": { "generation": { "model_id": "granite-3.3-8b-instruct" } },
   "evaluation": {
-    "evaluator": "judge",
-    "judge_model_id": "granite-3.3-8b-instruct"
+    {
+      "evaluator": "judge",
+      "model_id": "granite-3.3-8b-instruct"
+      "metrics": ["answer_relevance"]
+    },
+    {
+      "evaluator": "unitxt",
+      "metrics": ["faithfullness", "answer_correctness", "context_correctness"]
+    },
   },
   "scores": {
     "faithfulness": { "mean": 0.91, "ci_low": 0.88, "ci_high": 0.94 },
     "answer_correctness": { "mean": 0.82, "ci_low": 0.78, "ci_high": 0.86 },
     "context_correctness": { "mean": 0.80, "ci_low": 0.70, "ci_high": 0.90 },
+    "answer_relevance": { "mean": 0.80, "ci_low": 0.70, "ci_high": 0.90 },
     "overall_score": { "mean": 0.84, "ci_low": 0.79, "ci_high": 0.89 }
   },
   "final_score": 0.91
