@@ -17,11 +17,11 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 
 The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** runs **`rag_templates_optimization`** to search RAG configurations and score each candidate on a benchmark (up to 1 GB document sample). Outputs land under **`rag_patterns/<pattern_subdir>/`** in DSPA storage (`<bucket>/<pipeline-name>/<run-id>/…`) plus a pipeline-wide HTML leaderboard.
 
-Each **`pattern.json`** captures optimized **settings**, production **inference** (retrieve/generate and index building), and **evaluation** results. Index building then processes the **full document corpus** into the vector store the pattern queries at inference time.
+Each **`pattern.json`** captures optimized **settings**, **`inference`** (responses template), **`indexing`** (pipeline spec), and **`evaluation`** results. Index building processes the **full document corpus** into the vector store the pattern queries at inference time.
 
 | Artifact | Purpose |
 |----------|---------|
-| `pattern.json` | Authoritative record: `settings`, `inference`, `evaluation`, timing |
+| `pattern.json` | Authoritative record: `settings`, `inference`, `indexing`, `evaluation`, timing |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks for the pattern |
 | `evaluation_results.json` | Per-question detail ([RAG pattern evaluation](./rag_pattern_evaluation.md)) |
 
@@ -33,9 +33,9 @@ Each **`pattern.json`** captures optimized **settings**, production **inference*
 |-------|-------------|
 | `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time |
 | `settings` | Optimized RAG config: `vector_store_binding`, `chunking`, `embedding`, `retrieval`, `generation` (incl. `detected_language`) |
-| `inference.retrieve_generation.responses_template` | Frozen `POST /v1/responses` body — [Retrieve and generation](#retrieve-and-generation) |
-| `inference.vector_indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
-| `evaluation` | `evaluators`, `scores`, `final_score` — [RAG pattern evaluation](./rag_pattern_evaluation.md) |
+| `inference.responses_template` | Frozen `POST /v1/responses` body — [Retrieve and generation](#retrieve-and-generation) |
+| `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
+| `evaluation` | `metrics`, `optimization_metric`, `final_score` — [RAG pattern evaluation](./rag_pattern_evaluation.md) |
 
 ---
 
@@ -222,7 +222,7 @@ Each **`pattern.json`** captures optimized **settings**, production **inference*
 
 ## Retrieve and generation
 
-Optimization and production inference both use **Llama Stack `POST /v1/responses`**. The request body is in **`inference.retrieve_generation.responses_template`** — production calls the same API surface the benchmark used. See [Llama Stack Responses flow](https://llamastack.github.io/docs/api-openai/responses-flow).
+Optimization and production inference both use **Llama Stack `POST /v1/responses`**. The request body is in **`inference.responses_template`** — production calls the same API surface the benchmark used. See [Llama Stack Responses flow](https://llamastack.github.io/docs/api-openai/responses-flow).
 
 Substitute **`<user_query_placeholder>`** in `input`, then POST. Key fields: `model`, `input`, `tools` (`file_search` + `vector_store_ids`), `instructions`, `metadata`, `tool_choice`, `include`. Parse **`output`** (or SDK **`output_text`**) in consumers.
 
@@ -235,7 +235,7 @@ import requests
 
 def query_pattern(pattern_path: Path, user_query: str) -> dict:
     pattern = json.loads(pattern_path.read_text())
-    body = copy.deepcopy(pattern["inference"]["retrieve_generation"]["responses_template"])
+    body = copy.deepcopy(pattern["inference"]["responses_template"])
     for block in body.get("input", []):
         for part in block.get("content", []):
             if part.get("text") == "<user_query_placeholder>":
@@ -254,15 +254,15 @@ def query_pattern(pattern_path: Path, user_query: str) -> dict:
 
 ## Index building
 
-Index building populates the production vector store via the managed **`autorag-documents-indexing`** pipeline ([`documents_indexing_pipeline`](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/data_processing/autorag/documents_indexing_pipeline)), registered in the AI Pipelines catalog (`RELATED_IMAGE_ODH_AUTORAG_IMAGE`). One pipeline definition serves all patterns; per-pattern values come from **`inference.vector_indexing.pipeline_spec`**.
+Index building populates the production vector store via the managed **`documents-indexing-pipeline`** ([`documents_indexing_pipeline`](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/data_processing/autorag/documents_indexing_pipeline)), registered in the AI Pipelines catalog. One pipeline definition serves all patterns; per-pattern values come from **`indexing.pipeline_spec`**.
 
 | `pipeline_spec` field | Role |
 |-----------------------|------|
-| `pipeline_name` | `autorag-documents-indexing` |
+| `pipeline_name` | Managed catalog name (e.g. `documents-indexing-pipeline`) |
 | `parameters` | Pre-filled from optimization run + pattern `settings` |
 | `overrides_allowed` | Keys the UI may expose for user override at submit time |
 
-**Parameter sources:** optimization run → `ogx_secret_name`, `input_data_*`, `vector_io_provider_id`; pattern `settings` → embedding, chunking, distance metric, `vector_store_id`. Secret fields are **names only** (Kubernetes Secret references).
+**Parameter sources:** optimization run → `ogx_secret_name`, `input_data_*`, `vector_io_provider_id`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `vector_store_id`. Secret fields are **names only** (Kubernetes Secret references).
 
 **Workflow:** optimization completes → user selects pattern → read `pipeline_spec` → resolve managed pipeline → pre-fill run form → user confirms/overrides → submit → full corpus indexed → [retrieve and generation](#retrieve-and-generation) ready.
 

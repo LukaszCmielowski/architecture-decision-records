@@ -51,7 +51,7 @@ These paths represent the **RHOAI 3.5+** artifact structure (see upstream `pipel
 
 | Artifact | Type | Purpose |
 |----------|------|---------|
-| **`pattern.json`** | JSON | **Consolidated pattern record** containing: chunking, embedding, retrieval, generation settings; **Responses API request template** in `inference.retrieve_generation.responses_template`; vector store binding; `inference.vector_indexing.pipeline_spec`; `evaluation` scores and timing. Single source of truth for registration, deployment, and code generation. |
+| **`pattern.json`** | JSON | **Consolidated pattern record** containing: chunking, embedding, retrieval, generation settings; **Responses API request template** in `inference.responses_template`; vector store binding; `indexing.pipeline_spec`; `evaluation` metrics and timing. Single source of truth for registration, deployment, and code generation. |
 | **`indexing_notebook.ipynb`** | Jupyter Notebook | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
 | **`inference_notebook.ipynb`** | Jupyter Notebook | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
 | **`evaluation_results.json`** | JSON | Per-question evaluation metrics (context precision, answer relevance, faithfulness), traces, metadata |
@@ -69,8 +69,8 @@ Design follows the same concepts as the AutoML doc: **one parent run per KFP pip
 | **Child runs** | **One nested child run per RAG pattern** (folder name or `pattern.json` `name`). Enables side-by-side comparison in the MLflow UI for faithfulness / answer_correctness / context_correctness and chunking / retrieval / model choices.                                                    |
 | **Traces** | **Required** when `MLFLOW_TRACKING_URI` is set. **One trace per benchmark request**, attached to the **pattern child run** (not the parent). If the eval set has *N* rows and the pipeline produces *P* patterns, expect **P × N** traces total (*N* under each pattern’s child run). |
 | **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with [MLflow `SpanType`](https://mlflow.org/docs/latest/genai/concepts/span#span-types) where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for OGX `responses.create`. |
-| **Params (child)** | From **`pattern.json`** → `settings`: e.g. `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id`, `vector_store_binding` fields (`provider_id`, `provider_type`, `vector_store_id`, `vector_store_name`); from **`inference.retrieve_generation.responses_template`**: key fields as flattened params. |
-| **Metrics (child)** | From **`pattern.json`**: `duration_seconds`, `iteration`; from **`evaluation`**: `final_score` and per-metric means in `scores` (`faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`) — use **`mlflow.log_metric`** for scalars. |
+| **Params (child)** | From **`pattern.json`** → `settings`: e.g. `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id`, `vector_store_binding` fields (`provider_id`, `provider_type`, `vector_store_id`, `vector_store_name`); from **`inference.responses_template`**: key fields as flattened params. |
+| **Metrics (child)** | From **`pattern.json`**: `duration_seconds`, `iteration`; from **`evaluation`**: `final_score`, `optimization_metric`, and per-metric `scores.mean` in `metrics[]` — use **`mlflow.log_metric`** for scalars. |
 | **Child Artifacts** | Pointers to KFP artifacts: **`pattern.json`**, **`evaluation_results.json`**, **`indexing_notebook.ipynb`**, **`inference_notebook.ipynb`**. Logged as params containing artifact URIs/paths, not copied into MLflow. |
 
 ---
@@ -120,11 +120,14 @@ def log_pattern_to_mlflow(pattern: dict, pattern_dir: Path, parent_run_id: str) 
             })
             evaluation = pattern.get("evaluation", {})
             mlflow.log_metric("final_score", evaluation.get("final_score", 0))
+            if evaluation.get("optimization_metric"):
+                mlflow.log_param("optimization_metric", evaluation["optimization_metric"])
             if "duration_seconds" in pattern:
                 mlflow.log_metric("duration_seconds", pattern["duration_seconds"])
-            for name, value in evaluation.get("scores", {}).items():
-                if isinstance(value, dict) and "mean" in value:
-                    mlflow.log_metric(name, value["mean"])
+            for metric in evaluation.get("metrics", []):
+                scores = metric.get("scores", {})
+                if isinstance(scores, dict) and "mean" in scores:
+                    mlflow.log_metric(metric["name"], scores["mean"])
             mlflow.log_param("pattern_json_path", str(pattern_dir / "pattern.json"))
 
 
@@ -165,8 +168,8 @@ ai4rag already computes RAGAS-style metrics during optimization. Log **aggregate
 
 | Source field | MLflow |
 |--------------|--------|
-| `final_score` | `log_metric("final_score", ...)` |
-| `scores` (e.g. `faithfulness`, `answer_correctness`, `context_precision`) | `log_metric` per key |
+| `final_score` | `log_metric("final_score", ...)` from `evaluation.final_score` |
+| `metrics[].name` | `log_metric(name, scores.mean)` for each entry in `evaluation.metrics` |
 | `duration_seconds` | `log_metric("duration_seconds", ...)` |
 
 Per-question rows stay in KFP **`evaluation_results.json`**.

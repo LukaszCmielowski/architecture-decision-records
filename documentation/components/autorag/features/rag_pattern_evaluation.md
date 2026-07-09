@@ -15,17 +15,15 @@ During **`rag_templates_optimization`**, ai4rag scores each RAG pattern on a ben
 
 AutoRAG routes metrics to internal backends; callers do not configure an **`evaluator`**.
 
-| Metric | Backend | Question answered |
-|--------|---------|-------------------|
-| `faithfulness` | `UnitxtEvaluator` | Is the answer supported by retrieved context? |
-| `answer_correctness` | `UnitxtEvaluator` | Does the answer match ground truth? |
-| `context_correctness` | `UnitxtEvaluator` | Was retrieval sufficient? |
-| `answer_relevance` | `LLMaJEvaluator` | Does the answer address the question? |
-| `overall_score` | *(derived)* | Equal-weight mean of the four metrics; default `optimization_metric` |
+| Metric | Backend (`evaluator`) | Question answered |
+|--------|----------------------|-------------------|
+| `faithfulness` | `unitxt` | Is the answer supported by retrieved context? |
+| `answer_correctness` | `unitxt` | Does the answer match ground truth? |
+| `context_correctness` | `unitxt` | Was retrieval sufficient? |
+| `answer_relevance` | `judge` | Does the answer address the question? |
+| `overall_score` | `custom` | Equal-weight mean of the four metrics |
 
-Per-question scores are **0–1** floats; aggregates use **`mean`, `ci_low`, `ci_high`** ([ai4rag shape](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)). All metrics run every optimization; only **`optimization_metric`** selects the GAM objective.
-
-Pipeline parameter on **`documents_rag_optimization_pipeline`**: **`optimization_metric`** (default **`overall_score`**) selects the GAM objective (`objective_metric` in ai4rag).
+Per-question scores are **0–1** floats; each metric entry carries **`scores`** with **`mean`, `ci_low`, `ci_high`** ([ai4rag shape](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)). All metrics run every optimization; **`optimization_metric`** (pipeline parameter, default **`overall_score`**) selects the GAM objective and is recorded in `evaluation.optimization_metric`. **`final_score`** is the mean of the metric named by `optimization_metric`.
 
 `answer_relevance` cost scales with benchmark rows × patterns.
 
@@ -33,7 +31,7 @@ Pipeline parameter on **`documents_rag_optimization_pipeline`**: **`optimization
 
 ## Judge model
 
-One judge per optimization run, used only for **`answer_relevance`**. ai4rag auto-selects it in **`search_space_preparation`** from the validated generation-model pool. The chosen **`model_id`** is recorded in `pattern.json` → `evaluation.evaluators` (see [Artifacts](#artifacts)). Prefer a judge distinct from the **generation** model; when only one model is deployed, judge **`model_id` may equal `generation.model_id`**.
+One judge per optimization run, used only for **`answer_relevance`**. ai4rag auto-selects it in **`search_space_preparation`** from the validated generation-model pool. The chosen **`model_id`** is recorded on the `answer_relevance` metric entry (`evaluator: judge`). Prefer a judge distinct from the **generation** model; when only one model is deployed, judge **`model_id` may equal `generation.model_id`**.
 
 | Available models | Selection |
 |------------------|-----------|
@@ -55,36 +53,59 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Artifacts
 
-`pattern.json` → **`evaluation`** contains `evaluators`, `scores`, and `final_score`. See [full schema](./rag_pattern_inference.md#example-patternjson).
+`pattern.json` → **`evaluation`** contains `metrics`, `optimization_metric`, and `final_score`. See [full schema](./rag_pattern_inference.md#example-patternjson).
 
 ```json
 "evaluation": {
-  "evaluators": [
+  "metrics": [
     {
-      "evaluator": "judge",
-      "model_id": "gpt-4.1-mini",
-      "metrics": ["answer_relevance"]
+      "evaluator": "unitxt",
+      "name": "faithfulness",
+      "description": "",
+      "scores": { "mean": 0.91, "ci_low": 0.88, "ci_high": 0.94 }
     },
     {
       "evaluator": "unitxt",
-      "metrics": ["faithfulness", "answer_correctness", "context_correctness"]
+      "name": "answer_correctness",
+      "description": "",
+      "scores": { "mean": 0.82, "ci_low": 0.78, "ci_high": 0.86 }
+    },
+    {
+      "evaluator": "unitxt",
+      "name": "context_correctness",
+      "description": "",
+      "scores": { "mean": 0.80, "ci_low": 0.70, "ci_high": 0.90 }
+    },
+    {
+      "evaluator": "judge",
+      "model_id": "gpt-4.1-mini",
+      "name": "answer_relevance",
+      "description": "",
+      "scores": { "mean": 0.91, "ci_low": 0.88, "ci_high": 0.94 }
+    },
+    {
+      "evaluator": "custom",
+      "name": "overall_score",
+      "description": "",
+      "scores": { "mean": 0.84, "ci_low": 0.79, "ci_high": 0.89 }
     }
   ],
-  "scores": {
-    "faithfulness": { "mean": 0.91, "ci_low": 0.88, "ci_high": 0.94 },
-    "answer_correctness": { "mean": 0.82, "ci_low": 0.78, "ci_high": 0.86 },
-    "context_correctness": { "mean": 0.80, "ci_low": 0.70, "ci_high": 0.90 },
-    "answer_relevance": { "mean": 0.80, "ci_low": 0.70, "ci_high": 0.90 },
-    "overall_score": { "mean": 0.84, "ci_low": 0.79, "ci_high": 0.89 }
-  },
-  "final_score": 0.84
+  "optimization_metric": "faithfulness",
+  "final_score": 0.91
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `metrics[]` | One entry per metric: `evaluator`, `name`, `description`, `scores`; `model_id` on judge entries |
+| `optimization_metric` | Pipeline GAM objective used for this run |
+| `final_score` | `scores.mean` of the metric named by `optimization_metric` |
 
 ---
 
 ## Related
 
 - [RAG pattern inference](./rag_pattern_inference.md) — full `pattern.json` schema
+- [AutoRAG optimization settings](./experiment_settings.md) — `optimization_metric` pipeline parameter
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
 - [ai4rag evaluation guide](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)
