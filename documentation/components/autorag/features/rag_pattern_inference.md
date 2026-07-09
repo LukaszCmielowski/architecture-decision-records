@@ -53,11 +53,17 @@ Each **`pattern.json`** captures optimized **settings**, production **inference*
          "provider_type":"remote::milvus",
          "vector_store_id":"vs_coll_pattern_01"
       },
-      "chunking":{"method":"recursive","chunk_size":2048,"chunk_overlap":256},
+      "chunking":{
+         "method":"recursive",
+         "chunk_size":2048,
+         "chunk_overlap":256
+      },
       "embedding":{
          "model_id":"text-embedding-3-small",
-         "distance_metric":"cosine",
-         "embedding_params":{"embedding_dimension":768}
+         "embedding_params":{
+            "embedding_dimension":768,
+            "context_length":2048
+         }
       },
       "retrieval":{
          "method":"simple",
@@ -72,69 +78,142 @@ Each **`pattern.json`** captures optimized **settings**, production **inference*
          "context_template_text":"{document}",
          "user_message_text":"…",
          "system_message_text":"…",
-         "detected_language":{"code":"ja","name":"Japanese"}
+         "detected_language":{
+            "code":"ja",
+            "name":"Japanese"
+         }
       }
    },
    "inference":{
-      "retrieve_generation":{
-         "responses_template":{
-            "model":"gpt-4.1-mini",
-            "stream":false,
-            "store":true,
-            "input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"<user_query_placeholder>"}]}],
-            "metadata":{"autorag_run_id":"012345678","rag_pattern_name":"pattern_01"},
-            "instructions":"Please answer the question using only information found in file_search results. …",
-            "tools":[{
+      "responses_template":{
+         "model":"gpt-4.1-mini",
+         "stream":false,
+         "store":true,
+         "input":[
+            {
+               "type":"message",
+               "role":"user",
+               "content":[
+                  {
+                     "type":"input_text",
+                     "text":"<user_query_placeholder>"
+                  }
+               ]
+            }
+         ],
+         "metadata":{
+            "autorag_run_id":"012345678",
+            "rag_pattern_name":"pattern_01"
+         },
+         "instructions":"Please answer the question using only information found in file_search results. …",
+         "tools":[
+            {
                "type":"file_search",
-               "vector_store_ids":["vs_coll_pattern_01"],
+               "vector_store_ids":[
+                  "vs_coll_pattern_01"
+               ],
                "max_num_results":5,
-               "ranking_options":{"search_mode":"hybrid","ranker_strategy":"rrf","ranker_k":60,"ranker_alpha":0.5}
-            }],
-            "tool_choice":{"type":"file_search"},
-            "include":["file_search_call.results"]
-         }
-      },
-      "vector_indexing":{
-         "pipeline_spec":{
-            "pipeline_name":"autorag-documents-indexing",
-            "parameters":{
-               "ogx_secret_name":"ogx-connection",
-               "vector_io_provider_id":"milvus-provider-1",
-               "vector_store_id":"coll_pattern_01",
-               "input_data_secret_name":"s3-input-connection",
-               "input_data_bucket_name":"customer-docs",
-               "input_data_key":"corpus/v1/",
-               "embedding_model_id":"nomic-embed-text-v1.5",
-               "embedding_params":{"embedding_dimension":768},
-               "distance_metric":"cosine",
-               "chunking_method":"recursive",
-               "chunk_size":1024,
-               "chunk_overlap":128,
-               "batch_size":20
+               "ranking_options":{
+                  "search_mode":"hybrid",
+                  "ranker_strategy":"rrf",
+                  "ranker_k":60,
+                  "ranker_alpha":0.5
+               }
+            }
+         ],
+         "tool_choice":{
+            "type":"file_search"
+         },
+         "include":[
+            "file_search_call.results"
+         ]
+      }
+   },
+   "indexing":{
+      "pipeline_spec":{
+         "pipeline_name":"documents-indexing-pipeline",
+         "parameters":{
+            "ogx_secret_name":"ogx-connection",
+            "vector_io_provider_id":"milvus-provider-1",
+            "vector_store_id":"coll_pattern_01",
+            "input_data_secret_name":"s3-input-connection",
+            "input_data_bucket_name":"customer-docs",
+            "input_data_key":"corpus/v1/",
+            "embedding_model_id":"nomic-embed-text-v1.5",
+            "embedding_params":{
+               "embedding_dimension":768,
+               "context_length":2048
             },
-            "overrides_allowed":[
-               "input_data_secret_name",
-               "input_data_bucket_name",
-               "input_data_key",
-               "collection_name",
-               "batch_size"
-            ]
-         }
+            "chunking_method":"recursive",
+            "chunk_size":1024,
+            "chunk_overlap":128,
+            "batch_size":20
+         },
+         "overrides_allowed":[
+            "input_data_secret_name",
+            "input_data_bucket_name",
+            "input_data_key",
+            "vector_store_id",
+            "batch_size"
+         ]
       }
    },
    "evaluation":{
-      "evaluators":[
-         {"evaluator":"judge","model_id":"gpt-4.1-mini","metrics":["answer_relevance"]},
-         {"evaluator":"unitxt","metrics":["faithfulness","answer_correctness","context_correctness"]}
+      "metrics":[
+         {
+            "evaluator":"unitxt",
+            "name":"faithfulness",
+            "description":"",
+            "scores":{
+               "mean":0.91,
+               "ci_low":0.88,
+               "ci_high":0.94
+            }
+         },
+         {
+            "evaluator":"unitxt",
+            "name":"answer_correctness",
+            "description":"",
+            "scores":{
+               "mean":0.82,
+               "ci_low":0.78,
+               "ci_high":0.86
+            }
+         },
+         {
+            "evaluator":"unitxt",
+            "name":"context_correctness",
+            "description":"",
+            "scores":{
+               "mean":0.80,
+               "ci_low":0.70,
+               "ci_high":0.90
+            }
+         },
+         {
+            "evaluator":"judge",
+            "model_id":"gpt-4.1-mini",
+            "name":"answer_relevance",
+            "description":"",
+            "scores":{
+               "mean":0.91,
+               "ci_low":0.88,
+               "ci_high":0.94
+            }
+         },
+         {
+            "evaluator":"custom",
+            "name":"overall_score",
+            "description":"",
+            "scores":{
+               "mean":0.84,
+               "ci_low":0.79,
+               "ci_high":0.89
+            }
+         }
       ],
-      "scores":{
-         "faithfulness":{"mean":0.91,"ci_low":0.88,"ci_high":0.94},
-         "answer_correctness":{"mean":0.82,"ci_low":0.78,"ci_high":0.86},
-         "context_correctness":{"mean":0.80,"ci_low":0.70,"ci_high":0.90},
-         "answer_relevance":{"mean":0.80,"ci_low":0.70,"ci_high":0.90},
-         "overall_score":{"mean":0.84,"ci_low":0.79,"ci_high":0.89}
-      },
-      "final_score":0.84
+      "optimization_metric":"faithfulness",
+      "final_score":0.91
    }
 }
 ```
