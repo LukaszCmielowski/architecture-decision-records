@@ -194,6 +194,6 @@ Index building populates the production vector store via the managed **`autorag-
 ## Related
 
 - [RAG pattern evaluation](./rag_pattern_evaluation.md)
-- [Experiment settings](./experiment_settings.md)
+- [AutoRAG optimization settings](./experiment_settings.md) — pipeline parameters, presets, chunking, retrieval
 - [MLflow integration](./mlflow_integration.md)
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)

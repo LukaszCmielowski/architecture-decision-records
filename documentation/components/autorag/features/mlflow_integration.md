@@ -267,7 +267,7 @@ Further reading: [OpenAI tracing](https://mlflow.org/docs/latest/genai/tracing/i
 
 - OGX / Llama Stack MLflow tracing: https://ogx-ai.github.io/blog/mlflow-observability
 - AutoRAG component overview: [../README.md](../README.md)
-- Pipeline parameters and presets: [Experiment settings (pipeline parameters)](./experiment_settings.md)
+- Pipeline parameters, presets, chunking, and retrieval: [AutoRAG optimization settings](./experiment_settings.md)
 - AutoRAG ADR: [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
 - Shared platform MLflow details: [AutoML MLflow integration](../../automl/features/mlflow_integration.md)
 - Data Science Pipelines architecture: [../../pipelines/README.md](../../pipelines/README.md)

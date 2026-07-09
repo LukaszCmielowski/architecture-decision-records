@@ -1,125 +1,158 @@
-# Experiment settings (pipeline parameters)
+# AutoRAG optimization settings
 
-This page documents the **top-level input parameters** for the **Documents RAG optimization** pipeline shipped in [pipelines-components](https://github.com/red-hat-data-services/pipelines-components) under `pipelines/training/autorag/`.
-
-Higher-level architecture and ADR-level parameter groups are in [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md). Chunking, retrieval, and Docling behavior referenced by presets are in [Chunking and retrieval methods](./chunking_and_retrievals_methods.md).
+Pipeline parameters, presets, and the **chunking / retrieval** search space for **`documents_rag_optimization_pipeline`** ([pipelines-components](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)). ADR context: [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md).
 
 ## Table of contents
 
-- [Documents RAG optimization pipeline](#documents-rag-optimization-pipeline)
-  - [Current shipping parameters](#current-shipping-parameters)
-  - [OpenShift AI 3.5 and later](#openshift-ai-35-and-later)
-- [Preset support](#preset-support)
+- [Pipeline parameters](#pipeline-parameters)
+- [Presets](#presets)
+- [Chunking methods](#chunking-methods)
+- [Retrieval methods](#retrieval-methods)
+- [Related](#related)
 
 ---
 
-## Documents RAG optimization pipeline
+## Pipeline parameters
 
-These parameters are the public surface of `documents_rag_optimization_pipeline` in [`pipeline.py`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py).
-
-### Current shipping parameters
-
-Arguments exposed today on the Documents RAG optimization pipeline (verify on your **pipelines-components** tag or branch):
+Public surface of [`pipeline.py`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py) (verify on your **pipelines-components** tag):
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `test_data_secret_name` | `str` | (required) | Kubernetes **Secret** for S3-compatible test-data access. Expected keys: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`; `AWS_DEFAULT_REGION` optional. |
-| `test_data_bucket_name` | `str` | (required) | Bucket containing the evaluation benchmark JSON. |
-| `test_data_key` | `str` | (required) | Object key of the test data file. |
-| `input_data_secret_name` | `str` | (required) | Kubernetes **Secret** for document corpus access (same key convention as test data). |
-| `input_data_bucket_name` | `str` | (required) | Bucket containing source documents. |
-| `input_data_key` | `str` | `""` | Object key or prefix for input documents. |
-| `ogx_secret_name` | `str` | (required) | Secret for OGX / Llama Stack API: `OGX_CLIENT_API_KEY`, `OGX_CLIENT_BASE_URL`. |
-| `vector_io_provider_id` | `str` | (required) | Registered vector I/O provider id (for example Milvus). |
-| `embedding_models` | `Optional[List[str]]` | `None` | Optional allow-list of embedding model ids for the search space. When omitted, ai4rag uses platform defaults. |
-| `generation_models` | `Optional[List[str]]` | `None` | Optional allow-list of generation model ids for the search space. |
-| `optimization_metric` | `str` | `overall_score` | GAM objective. One of `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`. |
-| `optimization_max_rag_patterns` | `int` | `8` | Maximum number of RAG patterns to evaluate and retain (`max_number_of_rag_patterns` in ai4rag). |
-
-### OpenShift AI 3.5 and later
-
-Additional KFP pipeline parameter planned for the optimization graph. Confirm name and optionality in **`pipeline.py`** for your build.
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `preset` | `str` | `speed` | Pipeline-level quality tier. Maps to Docling extraction options, chunking search space, and indexing features before `rag_templates_optimization`. Use only values listed under [Preset support](#preset-support). Recorded in MLflow as `preset` on the parent run. |
+| `test_data_secret_name` | `str` | (required) | Secret for S3-compatible test-data access (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`; `AWS_DEFAULT_REGION` optional) |
+| `test_data_bucket_name` | `str` | (required) | Bucket containing the evaluation benchmark JSON |
+| `test_data_key` | `str` | (required) | Object key of the test data file |
+| `input_data_secret_name` | `str` | (required) | Secret for document corpus access (same key convention) |
+| `input_data_bucket_name` | `str` | (required) | Bucket containing source documents |
+| `input_data_key` | `str` | `""` | Object key or prefix for input documents |
+| `ogx_secret_name` | `str` | (required) | OGX / Llama Stack secret (`OGX_CLIENT_API_KEY`, `OGX_CLIENT_BASE_URL`) |
+| `vector_io_provider_id` | `str` | (required) | Registered vector I/O provider id (e.g. Milvus) |
+| `embedding_models` | `Optional[List[str]]` | `None` | Optional embedding model allow-list for the search space |
+| `generation_models` | `Optional[List[str]]` | `None` | Optional generation model allow-list for the search space |
+| `optimization_metric` | `str` | `overall_score` | GAM objective: `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score` |
+| `optimization_max_rag_patterns` | `int` | `8` | Max patterns to evaluate and retain |
+| `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, and indexing defaults ([Presets](#presets)); logged in MLflow |
 
 ---
 
-## Preset support
+## Presets
 
-**OpenShift AI AutoRAG** exposes two pipeline presets. Each preset fixes **ingestion and search-space defaults**; ai4rag still optimizes embedding, retrieval, and generation settings within that envelope. **Both presets use the same pipeline resource tier** (8 vCPU / 32 GiB RAM per workload step).
+Each preset fixes **ingestion and chunking search-space defaults**; ai4rag still optimizes embedding, retrieval, and generation within that envelope.
 
-| Preset | Min resources (workload steps) | Role (summary) |
-|--------|-------------------------------|----------------|
-| `speed` | 4 vCPU / 16 GiB RAM | Fastest path: **recursive** chunking only on exported text, no table-structure parsing, no LLM contextual enrichment. |
-| `balanced` | 8 vCPU / 32 GiB RAM | Higher quality for structured PDFs/DOCX: explores **recursive** and Docling **hybrid** chunking (with `contextualize=True`), plus table layout parsing and [LLM contextual enrichment](./chunking_and_retrievals_methods.md#llm-contextual-enrichment-index-time-rhoai-35) at index time. |
+| Preset | Resources (workload steps) | Chunking search space | Docling PDF tables | LLM contextual enrichment | `query_rag` `max_threads` |
+|--------|---------------------------|----------------------|--------------------|---------------------------|---------------------------|
+| `speed` (default) | 4 vCPU / 16 GiB | `recursive` only | `do_table_structure: false` | not explored | 10 |
+| `balanced` | 8 vCPU / 32 GiB | `recursive` + `hybrid` | `do_table_structure: true` ([TableFormer](https://docling-project.github.io/docling/guides/pdf-processing/)) | explored (`enabled: true`) | 4 |
 
-### `speed` (default)
+**`balanced` additionally:** `include_context: true` on hybrid trials (Docling `contextualize()` — structural metadata, no LLM). See [Chunking methods](#chunking-methods).
 
-| Layer | Setting |
-|-------|---------|
-| **Docling (`text_extraction`)** | PDF pipeline: `do_table_structure: false` — layout detection only; tables are not reconstructed with TableFormer. |
-| **Chunking search space** | `chunking.method: recursive` only — Markdown (or flat text) export from persisted `DoclingDocument`, then size/overlap splitting. |
-| **Contextual enrichment** | `chunking.contextual_enrichment.enabled: false` — not explored in the search space. |
-| **Benchmark query concurrency** | ai4rag `query_rag` **`max_threads`**: **10** (default). |
+Docling extraction (`text_extraction`) is fixed per run by the preset, not repeated in each `pattern.json`. Use `speed` for plain text or quick runs; `balanced` for structured PDFs/DOCX with tables and headings.
 
-### `balanced`
+---
 
-Enables the features below relative to `speed`. ai4rag still picks the best combination per pattern within this envelope.
+## Chunking methods
 
-| Feature | Where it applies | Setting |
-|---------|------------------|---------|
-| **Chunking search space** | `rag_templates_optimization` (per trial) | **`recursive`** and **`hybrid`** — both methods are explored. **`recursive`**: `export_to_markdown()` (or pre-derived text) then size/overlap split. **`hybrid`**: Docling native **`HybridChunker`** on the persisted `DoclingDocument` (structure-aware boundaries + tokenizer-aware split/merge). See [Docling chunking paths](./chunking_and_retrievals_methods.md#extraction-persistence-and-optimization-flow). |
-| **Docling `contextualize()`** | Indexing (`chunking`, hybrid path) | `include_context: true` — prepend structural metadata (section path, headings) to chunk text before embedding; no extra LLM call. Applies when the trial selects **`hybrid`**. |
-| **Docling table layout parser** | `text_extraction` (PDF) | `do_table_structure: true` — [TableFormer](https://docling-project.github.io/docling/guides/pdf-processing/) reconstructs table rows and columns from detected layout. |
-| **LLM contextual enrichment** | Indexing (`chunking`) | `chunking.contextual_enrichment.enabled: true` — optional LLM-generated situating text prepended before embedding and sparse indexing ([Anthropic contextual retrieval](https://www.anthropic.com/news/contextual-retrieval)); separate from Docling `contextualize()`. |
-| **Benchmark query concurrency** | ai4rag `query_rag` **`max_threads`**: **4** (lower than `speed` because each concurrent request carries more retrieved context). |
+Chunking splits documents into embeddable segments. **`chunking`** fields control boundaries, Docling serialization, and index-time **[contextual enrichment](https://www.anthropic.com/news/contextual-retrieval)** (`contextual_enrichment` — LLM situating text before embedding). Query-time behavior lives under **`retrieval`**.
 
-**Example `pattern.json` fragments** under `balanced` (other fields still optimized by ai4rag):
+### Methods
 
-Recursive trial outcome:
+| `method` | Input | Behavior | Typical use |
+|----------|-------|----------|-------------|
+| `recursive` | Flat text or Markdown (`export_to_markdown()` from `DoclingDocument`) | Separator cascade (`\n\n` → `\n` → ` `) with `chunk_size` / `chunk_overlap` | General text, `speed` preset |
+| `hybrid` | `DoclingDocument` tree | `HybridChunker`: structure-aware boundaries + tokenizer-aware split/merge; optional `include_context`, `merge_lists` | Structured PDFs/DOCX, `balanced` preset |
+
+[Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/) distinguish **Markdown export + post-split** (recursive path) from **native chunkers on the document model** (hybrid).
+
+### Extraction and optimization flow
+
+```
+text_extraction → DoclingDocument (JSON/YAML + artifacts) → manifest
+rag_templates_optimization → load DoclingDocument per trial → branch on chunking.method
+  hybrid: chunk on model (+ optional contextualize())
+  recursive: export_to_markdown() → split string
+```
+
+One parse per document; trials branch on `chunking.method` without re-parsing PDFs. Persist with `doc.save_as_json()` / `save_as_yaml()` using `ImageRefMode.REFERENCED` and an `artifacts_dir`; record docling version in a sidecar manifest.
+
+### LLM contextual enrichment
+
+Configured under **`chunking.contextual_enrichment`** (index time, not retrieval). Separate from Docling **`contextualize()`** (deterministic structural metadata only).
+
+| Field | Role |
+|-------|------|
+| `enabled` | Turn LLM situating text on/off |
+| `context_generation_model` | Model for 1–2 sentence chunk context (prepended before embed and BM25 index) |
+
+
+### Chunking parameters
+
+| Parameter | Notes |
+|-----------|-------|
+| `method` | `recursive`, `hybrid` |
+| `chunk_size`, `chunk_overlap` | Splitter limits |
+| `merge_lists`, `include_context`, `max_heading_depth` | Docling-native options |
+| `contextual_enrichment.*` | LLM enrichment at indexing |
+
+**Example (`balanced` hybrid trial):**
 
 ```json
 {
-  "settings": {
-    "chunking": {
-      "method": "recursive",
-      "chunk_size": 1024,
-      "chunk_overlap": 128,
-      "contextual_enrichment": {
-        "enabled": true,
-        "context_generation_model": "<from search space or platform default>"
-      }
+  "chunking": {
+    "method": "hybrid",
+    "chunk_size": 1024,
+    "chunk_overlap": 50,
+    "include_context": true,
+    "merge_lists": true,
+    "contextual_enrichment": {
+      "enabled": true,
+      "context_generation_model": "granite-3.1-8b-instruct"
     }
   }
 }
 ```
 
-Hybrid trial outcome (structure-aware chunks + Docling contextualization):
+---
+
+## Retrieval methods
+
+| `search_mode` | Behavior |
+|---------------|----------|
+| `vector` | Embedding similarity only |
+| `keyword` | BM25 only |
+| `hybrid` | Vector + BM25 fused with RRF (recommended for production) |
+
+| Parameter | Default | Role |
+|-----------|---------|------|
+| `method` | `simple` | Query-time retrieval strategy |
+| `number_of_chunks` | `5` | Top-k chunks (typical range 3–20) |
+| `search_mode` | `hybrid` | `vector`, `keyword`, or `hybrid` |
+| `ranker_strategy` | — | `rrf` or `weighted` (hybrid) |
+| `ranker_k` | — | RRF constant (typical 60) |
+| `ranker_alpha` | — | Weighted fusion: 0 keyword ↔ 1 vector |
+| `distance_metric` | `cosine` | Vector similarity metric |
+
+**Example:**
 
 ```json
 {
-  "settings": {
-    "chunking": {
-      "method": "hybrid",
-      "chunk_size": 1024,
-      "chunk_overlap": 50,
-      "include_context": true,
-      "merge_lists": true,
-      "contextual_enrichment": {
-        "enabled": true,
-        "context_generation_model": "<from search space or platform default>"
-      }
-    }
+  "retrieval": {
+    "method": "simple",
+    "number_of_chunks": 5,
+    "search_mode": "hybrid",
+    "ranker_strategy": "rrf",
+    "ranker_k": 60,
+    "ranker_alpha": 0.5
   }
 }
 ```
 
-### Notes
+ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric`. Sampling respects `max_combinations` and product search-space rules.
 
-- **Docling extraction** (`text_extraction`) is fixed per pipeline run by the preset — not repeated in each `pattern.json`.
-- **Benchmark concurrency:** preset sets ai4rag `query_rag` **`max_threads`** (`speed`: 10, `balanced`: 4). Each thread = one retrieval + generation call; indexing and Unitxt eval use their own batching, not this pool.
-- **Cost:** `balanced` costs more at ingestion (two chunking methods + LLM context per chunk). Use `speed` for plain text or quick runs; `balanced` for structured PDFs/DOCX with tables and headings.
+---
 
-Verify parameters on the **pipelines-components** README / `pipeline.py` for your OpenShift AI version.
+## Related
+
+- [RAG pattern inference](./rag_pattern_inference.md)
+- [RAG pattern evaluation](./rag_pattern_evaluation.md)
+- [MLflow integration](./mlflow_integration.md)
+- [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/)
+- [Anthropic contextual retrieval](https://www.anthropic.com/news/contextual-retrieval)
