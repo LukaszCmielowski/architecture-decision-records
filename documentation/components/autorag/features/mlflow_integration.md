@@ -43,7 +43,7 @@ These paths represent the **RHOAI 3.5+** artifact structure (see upstream `pipel
 | **Discovered documents** | `documents_discovery` | Descriptor of corpus objects for extraction. |
 | **Extracted text** | `text_extraction` | Extracted document text (e.g. via **docling**) for ai4rag. |
 | **`search_space_prep_report`** | `search_space_preparation` | YAML-serialized **search space** after phase-one validation. |
-| **`rag_patterns`** (directory artifact) | `rag_templates_optimization` | One **subdirectory per pattern** (pattern name = folder name). Under each: **`pattern.json`** (with embedded Responses API template), **`evaluation_results.json`**, **`indexing_notebook.ipynb`**, **`inference_notebook.ipynb`**, **`create_model_response.py`**. |
+| **`rag_patterns`** (directory artifact) | `rag_templates_optimization` | One **subdirectory per pattern** (pattern name = folder name). Under each: **`pattern.json`** (with embedded Responses API template), **`evaluation_results.json`**, **`indexing_notebook.ipynb`**, **`inference_notebook.ipynb`**. |
 
 
 
@@ -51,11 +51,10 @@ These paths represent the **RHOAI 3.5+** artifact structure (see upstream `pipel
 
 | Artifact | Type | Purpose |
 |----------|------|---------|
-| **`pattern.json`** | JSON | **Consolidated pattern record** containing: chunking, embedding, retrieval, generation settings; **Responses API request template** (`input`, `tools`, `instructions`, `metadata`) embedded in `settings.responses_template`; vector store binding; aggregate scores and timing. Single source of truth for registration, deployment, and code generation. |
+| **`pattern.json`** | JSON | **Consolidated pattern record** containing: chunking, embedding, retrieval, generation settings; **Responses API request template** in `inference.retrieve_generation.responses_template`; vector store binding; `inference.vector_indexing.pipeline_spec`; `evaluation` scores and timing. Single source of truth for registration, deployment, and code generation. |
 | **`indexing_notebook.ipynb`** | Jupyter Notebook | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
 | **`inference_notebook.ipynb`** | Jupyter Notebook | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
 | **`evaluation_results.json`** | JSON | Per-question evaluation metrics (context precision, answer relevance, faithfulness), traces, metadata |
-| **`create_model_response.py`** | Python | Interactive client script for testing patterns (embeds Llama Stack base URL from env, reads Responses config from `pattern.json`) |
 
 ---
 
@@ -70,9 +69,9 @@ Design follows the same concepts as the AutoML doc: **one parent run per KFP pip
 | **Child runs** | **One nested child run per RAG pattern** (folder name or `pattern.json` `name`). Enables side-by-side comparison in the MLflow UI for faithfulness / answer_correctness / context_correctness and chunking / retrieval / model choices.                                                    |
 | **Traces** | **Required** when `MLFLOW_TRACKING_URI` is set. **One trace per benchmark request**, attached to the **pattern child run** (not the parent). If the eval set has *N* rows and the pipeline produces *P* patterns, expect **P × N** traces total (*N* under each pattern’s child run). |
 | **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with [MLflow `SpanType`](https://mlflow.org/docs/latest/genai/concepts/span#span-types) where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for OGX `responses.create`. |
-| **Params (child)** | From **`pattern.json`** → `settings`: e.g. `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id`, `vector_store_binding`** fields (`provider_id`, `provider_type`, `vector_store_id`, `vector_store_name`) and key **`responses_template`** fields as flattened params. |
-| **Metrics (child)** | From **`pattern.json`**: `final_score`, `duration_seconds`, `iteration`; from **`scores`**: per-metric means (`faithfulness`, `answer_correctness`, `context_correctness`) — use **`mlflow.log_metric`** for scalars.                                                                      |
-| **Child Artifacts** | Pointers to KFP artifacts: **`pattern.json`**, **`evaluation_results.json`**, **`indexing_notebook.ipynb`**, **`inference_notebook.ipynb`**, **`create_model_response.py`**. Logged as params containing artifact URIs/paths, not copied into MLflow. |
+| **Params (child)** | From **`pattern.json`** → `settings`: e.g. `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id`, `vector_store_binding` fields (`provider_id`, `provider_type`, `vector_store_id`, `vector_store_name`); from **`inference.retrieve_generation.responses_template`**: key fields as flattened params. |
+| **Metrics (child)** | From **`pattern.json`**: `duration_seconds`, `iteration`; from **`evaluation`**: `final_score` and per-metric means in `scores` (`faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`) — use **`mlflow.log_metric`** for scalars. |
+| **Child Artifacts** | Pointers to KFP artifacts: **`pattern.json`**, **`evaluation_results.json`**, **`indexing_notebook.ipynb`**, **`inference_notebook.ipynb`**. Logged as params containing artifact URIs/paths, not copied into MLflow. |
 
 ---
 
@@ -119,11 +118,13 @@ def log_pattern_to_mlflow(pattern: dict, pattern_dir: Path, parent_run_id: str) 
                 "chunk_size": str(settings.get("chunking", {}).get("chunk_size", "")),
                 "retrieval_top_k": str(settings.get("retrieval", {}).get("top_k", "")),
             })
-            mlflow.log_metric("final_score", pattern.get("final_score", 0))
+            evaluation = pattern.get("evaluation", {})
+            mlflow.log_metric("final_score", evaluation.get("final_score", 0))
             if "duration_seconds" in pattern:
                 mlflow.log_metric("duration_seconds", pattern["duration_seconds"])
-            for name, value in pattern.get("scores", {}).items():
-                mlflow.log_metric(name, value)
+            for name, value in evaluation.get("scores", {}).items():
+                if isinstance(value, dict) and "mean" in value:
+                    mlflow.log_metric(name, value["mean"])
             mlflow.log_param("pattern_json_path", str(pattern_dir / "pattern.json"))
 
 
@@ -155,7 +156,7 @@ def rag_templates_optimization(...):
         if tracking:
             log_pattern_to_mlflow(pattern, pattern_dir, parent_run_id)
 
-    return {"num_patterns": len(patterns), "best_score": max(p["final_score"] for p in patterns)}
+    return {"num_patterns": len(patterns), "best_score": max(p["evaluation"]["final_score"] for p in patterns)}
 ```
 
 ### Metrics logged (child runs)

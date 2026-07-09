@@ -11,7 +11,7 @@
 
 ## Overview
 
-During **`rag_templates_optimization`**, ai4rag scores each RAG pattern on a benchmark. Aggregates land in **`pattern.json`** → `scores`, per-row detail in **`evaluation_results.json`**, and GAM ranks patterns by **`optimization_metric`**.
+During **`rag_templates_optimization`**, ai4rag scores each RAG pattern on a benchmark. Aggregates land in **`pattern.json`** → `evaluation`, per-row detail in **`evaluation_results.json`**, and GAM ranks patterns by **`optimization_metric`**.
 
 AutoRAG routes metrics to internal backends; callers do not configure an **`evaluator`**.
 
@@ -33,7 +33,7 @@ Pipeline parameter on **`documents_rag_optimization_pipeline`**: **`optimization
 
 ## Judge model
 
-One judge per optimization run, used only for **`answer_relevance`**. ai4rag auto-selects it in **`search_space_preparation`** from the validated generation-model pool. The chosen **`model_id`** is recorded in `pattern.json` → `evaluation` (see [Artifacts](#artifacts)). Prefer a judge distinct from the **generation** model; when only one model is deployed, judge **`model_id` may equal `generation.model_id`**.
+One judge per optimization run, used only for **`answer_relevance`**. ai4rag auto-selects it in **`search_space_preparation`** from the validated generation-model pool. The chosen **`model_id`** is recorded in `pattern.json` → `evaluation.evaluators` (see [Artifacts](#artifacts)). Prefer a judge distinct from the **generation** model; when only one model is deployed, judge **`model_id` may equal `generation.model_id`**.
 
 | Available models | Selection |
 |------------------|-----------|
@@ -55,19 +55,14 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Artifacts
 
-`pattern.json` → **`evaluation`** records which backends produced which metrics, including the auto-selected judge **`model_id`** for `answer_relevance`. See [full schema](./rag_pattern_inference.md#example-patternjson).
+`pattern.json` → **`evaluation`** contains `evaluators`, `scores`, and `final_score`. See [full schema](./rag_pattern_inference.md#example-patternjson).
 
 ```json
-{
-  "name": "pattern_01",
-  "iteration": 0,
-  "max_combinations": 24,
-  "duration_seconds": 120.5,
-  "settings": { "generation": { "model_id": "granite-3.3-8b-instruct" } },
-  "evaluation": [
+"evaluation": {
+  "evaluators": [
     {
       "evaluator": "judge",
-      "model_id": "granite-3.3-8b-instruct",
+      "model_id": "gpt-4.1-mini",
       "metrics": ["answer_relevance"]
     },
     {
@@ -90,5 +85,6 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Related
 
+- [RAG pattern inference](./rag_pattern_inference.md) — full `pattern.json` schema
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
 - [ai4rag evaluation guide](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)
