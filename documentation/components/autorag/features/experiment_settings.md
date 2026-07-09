@@ -153,6 +153,5 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 
 - [RAG pattern inference](./rag_pattern_inference.md)
 - [RAG pattern evaluation](./rag_pattern_evaluation.md)
-- [MLflow integration](./mlflow_integration.md)
 - [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/)
 - [Anthropic contextual retrieval](https://www.anthropic.com/news/contextual-retrieval)
