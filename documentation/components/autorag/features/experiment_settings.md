@@ -33,7 +33,7 @@ Arguments exposed today on the Documents RAG optimization pipeline (verify on yo
 | `vector_io_provider_id` | `str` | (required) | Registered vector I/O provider id (for example Milvus). |
 | `embedding_models` | `Optional[List[str]]` | `None` | Optional allow-list of embedding model ids for the search space. When omitted, ai4rag uses platform defaults. |
 | `generation_models` | `Optional[List[str]]` | `None` | Optional allow-list of generation model ids for the search space. |
-| `optimization_metric` | `str` | `faithfulness` | GAM objective. One of `faithfulness`, `answer_correctness`, `context_correctness`. |
+| `optimization_metric` | `str` | `overall_score` | GAM objective. One of `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`. |
 | `optimization_max_rag_patterns` | `int` | `8` | Maximum number of RAG patterns to evaluate and retain (`max_number_of_rag_patterns` in ai4rag). |
 
 ### OpenShift AI 3.5 and later

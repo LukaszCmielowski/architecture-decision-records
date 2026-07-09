@@ -17,11 +17,11 @@ AutoRAG routes metrics to internal backends; callers do not configure an **`eval
 
 | Metric | Backend | Question answered |
 |--------|---------|-------------------|
-| `faithfulness` | `UnitxtEvaluator` | Is the answer supported by retrieved context? (default `optimization_metric`) |
+| `faithfulness` | `UnitxtEvaluator` | Is the answer supported by retrieved context? |
 | `answer_correctness` | `UnitxtEvaluator` | Does the answer match ground truth? |
 | `context_correctness` | `UnitxtEvaluator` | Was retrieval sufficient? |
 | `answer_relevance` | `LLMaJEvaluator` | Does the answer address the question? |
-| `overall_score` | *(derived)* | Equal-weight mean of the four metrics ([LightRAG `ragas_score`](https://github.com/HKUDS/LightRAG/blob/main/lightrag/evaluation/eval_rag_quality.py) pattern) |
+| `overall_score` | *(derived)* | Equal-weight mean of the four metrics; default `optimization_metric` |
 
 Per-question scores are **0–1** floats; aggregates use **`mean`, `ci_low`, `ci_high`** ([ai4rag shape](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)). All metrics run every optimization; only **`optimization_metric`** selects the GAM objective.
 
@@ -29,7 +29,7 @@ Pipeline parameters on **`documents_rag_optimization_pipeline`**:
 
 | Parameter | Default | Role |
 |-----------|---------|------|
-| `optimization_metric` | **`faithfulness`** | GAM objective (`objective_metric` in ai4rag) |
+| `optimization_metric` | **`overall_score`** | GAM objective (`objective_metric` in ai4rag) |
 | `judge_model_id` | *(auto-select)* | Optional override for the LLMaJ model behind `answer_relevance` |
 
 `answer_relevance` cost scales with benchmark rows × patterns.
@@ -90,7 +90,7 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
     "answer_relevance": { "mean": 0.80, "ci_low": 0.70, "ci_high": 0.90 },
     "overall_score": { "mean": 0.84, "ci_low": 0.79, "ci_high": 0.89 }
   },
-  "final_score": 0.91
+  "final_score": 0.84
 }
 ```
 
@@ -98,9 +98,5 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Related
 
-- [RAG pattern inference](./rag_pattern_inference.md) — artifact layout
-- [MLflow integration](./mlflow_integration.md) — tracing and runs
-- [Chunking and retrieval methods](./chunking_and_retrievals_methods.md)
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
-- [LightRAG RAGAS evaluation](https://github.com/HKUDS/LightRAG/blob/main/lightrag/evaluation/README_EVALUASTION_RAGAS.md)
 - [ai4rag evaluation guide](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)
