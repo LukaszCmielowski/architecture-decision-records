@@ -54,7 +54,7 @@ These paths represent the **RHOAI 3.5+** artifact structure (see upstream `pipel
 | **`pattern.json`** | JSON | **Consolidated pattern record** containing: chunking, embedding, retrieval, generation settings; **Responses API request template** in `inference.responses_template`; vector store binding; `indexing.pipeline_spec`; `evaluation` metrics and timing. Single source of truth for registration, deployment, and code generation. |
 | **`indexing_notebook.ipynb`** | Jupyter Notebook | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
 | **`inference_notebook.ipynb`** | Jupyter Notebook | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
-| **`evaluation_results.json`** | JSON | Per-question evaluation metrics (context precision, answer relevance, faithfulness), traces, metadata |
+| **`evaluation_results.json`** | JSON | Per-benchmark-row scores and I/O — schema and example in [RAG pattern evaluation](./rag_pattern_evaluation.md#evaluation_resultsjson) |
 
 ---
 

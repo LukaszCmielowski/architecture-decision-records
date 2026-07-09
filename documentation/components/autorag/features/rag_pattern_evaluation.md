@@ -5,6 +5,7 @@
 - [Overview](#overview)
 - [Judge model](#judge-model)
 - [Artifacts](#artifacts)
+- [evaluation_results.json](#evaluation_resultsjson)
 - [Related](#related)
 
 ---
@@ -23,7 +24,7 @@ AutoRAG routes metrics to internal backends; callers do not configure an **`eval
 | `answer_relevance` | `judge` | Does the answer address the question? |
 | `overall_score` | `custom` | Equal-weight mean of the four metrics |
 
-Per-question scores are **0–1** floats; each metric entry carries **`scores`** with **`mean`, `ci_low`, `ci_high`** ([ai4rag shape](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)). All metrics run every optimization; **`optimization_metric`** (pipeline parameter, default **`overall_score`**) selects the GAM objective and is recorded in `evaluation.optimization_metric`. **`final_score`** is the mean of the metric named by `optimization_metric`.
+Per-question values are **0–1** floats. At pattern level, each `evaluation.metrics[]` entry carries **`scores`** with **`mean`, `ci_low`, `ci_high`** (aggregated across benchmark rows). All metrics run every optimization; **`optimization_metric`** (pipeline parameter, default **`overall_score`**) selects the GAM objective and is recorded in `evaluation.optimization_metric`. **`final_score`** is the mean of the metric named by `optimization_metric`.
 
 `answer_relevance` cost scales with benchmark rows × patterns.
 
@@ -53,47 +54,7 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Artifacts
 
-`pattern.json` → **`evaluation`** contains `metrics`, `optimization_metric`, and `final_score`. See [full schema](./rag_pattern_inference.md#example-patternjson).
-
-```json
-"evaluation": {
-  "metrics": [
-    {
-      "evaluator": "unitxt",
-      "name": "faithfulness",
-      "description": "",
-      "scores": { "mean": 0.91, "ci_low": 0.88, "ci_high": 0.94 }
-    },
-    {
-      "evaluator": "unitxt",
-      "name": "answer_correctness",
-      "description": "",
-      "scores": { "mean": 0.82, "ci_low": 0.78, "ci_high": 0.86 }
-    },
-    {
-      "evaluator": "unitxt",
-      "name": "context_correctness",
-      "description": "",
-      "scores": { "mean": 0.80, "ci_low": 0.70, "ci_high": 0.90 }
-    },
-    {
-      "evaluator": "judge",
-      "model_id": "gpt-4.1-mini",
-      "name": "answer_relevance",
-      "description": "",
-      "scores": { "mean": 0.91, "ci_low": 0.88, "ci_high": 0.94 }
-    },
-    {
-      "evaluator": "custom",
-      "name": "overall_score",
-      "description": "",
-      "scores": { "mean": 0.84, "ci_low": 0.79, "ci_high": 0.89 }
-    }
-  ],
-  "optimization_metric": "faithfulness",
-  "final_score": 0.91
-}
-```
+`pattern.json` → **`evaluation`** holds run-level aggregates (`metrics`, `optimization_metric`, `final_score`). Field reference below; full `pattern.json` example in [RAG pattern inference](./rag_pattern_inference.md#example-patternjson).
 
 | Field | Description |
 |-------|-------------|
@@ -103,9 +64,70 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ---
 
+## evaluation_results.json
+
+Each pattern subdirectory under **`rag_patterns/<pattern_name>/`** also contains **`evaluation_results.json`**: a JSON **array** with one object per benchmark row. Use it to inspect failures, compare retrieval quality across patterns, or audit judge scores — `pattern.json` → `evaluation.metrics[]` aggregates (`scores.mean`, `ci_low`, `ci_high`) are computed from `metrics[].score` across these rows.
+
+| Field | Description |
+|-------|-------------|
+| `question` | Benchmark question text |
+| `correct_answers` | Ground-truth answers from `benchmark_data.json` |
+| `answer` | Generated answer for this pattern |
+| `answer_contexts[]` | Retrieved chunks: `text`, `document_id` |
+| `metrics[]` | Per-metric scores for this row: `name`, `evaluator`, `score` (**0–1** float); `name` matches `evaluation.metrics[].name` in `pattern.json` |
+
+When MLflow tracing is enabled, equivalent retrieval/generation/evaluation detail may appear as per-row traces ([MLflow integration](./mlflow_integration.md)); KFP **`evaluation_results.json`** remains the source of truth for row-level scores.
+
+```json
+[
+  {
+    "question": "What warranty period applies to the XR-200 controller?",
+    "correct_answers": ["The XR-200 controller has a 24-month warranty."],
+    "answer": "The XR-200 controller is covered by a 24-month warranty from the date of purchase.",
+    "answer_contexts": [
+      {
+        "text": "XR-200 Controller — Warranty: 24 months from purchase date.",
+        "document_id": "xr-200-manual.pdf"
+      },
+      {
+        "text": "Register your XR-200 within 30 days to activate warranty coverage.",
+        "document_id": "warranty-policy.pdf"
+      }
+    ],
+    "metrics": [
+      { "name": "faithfulness", "evaluator": "unitxt", "score": 0.94 },
+      { "name": "answer_correctness", "evaluator": "unitxt", "score": 0.88 },
+      { "name": "context_correctness", "evaluator": "unitxt", "score": 0.82 },
+      { "name": "answer_relevance", "evaluator": "judge", "score": 0.91 },
+      { "name": "overall_score", "evaluator": "custom", "score": 0.89 }
+    ]
+  },
+  {
+    "question": "Which firmware versions support remote diagnostics?",
+    "correct_answers": ["Firmware 3.2 and later supports remote diagnostics."],
+    "answer": "Remote diagnostics require firmware 3.2 or newer.",
+    "answer_contexts": [
+      {
+        "text": "Remote diagnostics are available starting in firmware release 3.2.",
+        "document_id": "release-notes-3.2.pdf"
+      }
+    ],
+    "metrics": [
+      { "name": "faithfulness", "evaluator": "unitxt", "score": 0.97 },
+      { "name": "answer_correctness", "evaluator": "unitxt", "score": 0.85 },
+      { "name": "context_correctness", "evaluator": "unitxt", "score": 0.78 },
+      { "name": "answer_relevance", "evaluator": "judge", "score": 0.90 },
+      { "name": "overall_score", "evaluator": "custom", "score": 0.88 }
+    ]
+  }
+]
+```
+
+---
+
 ## Related
 
-- [RAG pattern inference](./rag_pattern_inference.md) — full `pattern.json` schema
+- [RAG pattern inference](./rag_pattern_inference.md) — full `pattern.json` schema and artifact layout
 - [AutoRAG optimization settings](./experiment_settings.md) — `optimization_metric` pipeline parameter
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
 - [ai4rag evaluation guide](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)

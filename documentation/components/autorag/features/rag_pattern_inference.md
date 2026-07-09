@@ -23,7 +23,7 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
 |----------|---------|
 | `pattern.json` | Authoritative record: `settings`, `inference`, `indexing`, `evaluation`, timing |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks for the pattern |
-| `evaluation_results.json` | Per-question detail ([RAG pattern evaluation](./rag_pattern_evaluation.md)) |
+| `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./rag_pattern_evaluation.md#evaluation_resultsjson)) |
 
 ---
 
