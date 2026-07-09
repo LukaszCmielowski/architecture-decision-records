@@ -37,7 +37,7 @@ A directory containing generated RAG patterns. Each **`<pattern_subdir>/`** cont
 
 | File | Purpose |
 |------|---------|
-| `pattern.json` | Authoritative pattern record from _ai4rag_: name, iteration, `RAG configurations` (chunking, embedding, retrieval, generation, vector store), aggregate `scores`, `final_score`, timing |
+| `pattern.json` | Authoritative pattern record from _ai4rag_: name, iteration, `RAG configurations` (chunking, embedding, retrieval, generation, vector store), `evaluation` metadata, aggregate `scores`, `final_score`, timing |
 | `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
 | `inference_notebook.ipynb` | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
 | `evaluation_results.json` | Evaluation payload (per-question scores, traces, metadata) --- the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
@@ -93,6 +93,17 @@ A directory which structure **mirrors** the `<pattern_subdir>/` hierarchy of the
       "system_message_text": "Please answer the question ..."
     }
   },
+  "evaluation": [
+    {
+      "evaluator": "judge",
+      "model_id": "gpt-4.1-mini",
+      "metrics": ["answer_relevance"]
+    },
+    {
+      "evaluator": "unitxt",
+      "metrics": ["faithfulness", "answer_correctness", "context_correctness"]
+    }
+  ],
   "scores": {
     "faithfulness": {
       "mean": 0.91,
@@ -103,9 +114,24 @@ A directory which structure **mirrors** the `<pattern_subdir>/` hierarchy of the
       "mean": 0.82,
       "ci_low": 0.78,
       "ci_high": 0.86
+    },
+    "context_correctness": {
+      "mean": 0.80,
+      "ci_low": 0.70,
+      "ci_high": 0.90
+    },
+    "answer_relevance": {
+      "mean": 0.80,
+      "ci_low": 0.70,
+      "ci_high": 0.90
+    },
+    "overall_score": {
+      "mean": 0.84,
+      "ci_low": 0.79,
+      "ci_high": 0.89
     }
   },
-  "final_score": 0.87
+  "final_score": 0.84
 }
 ```
 
@@ -145,7 +171,7 @@ The pipeline produces artifacts under each **`<pattern_subdir>/`** (one director
 
 | Artifact | Purpose |
 |----------|---------|
-| `pattern.json` | Authoritative pattern record from _ai4rag_: name, iteration, `RAG configurations` (chunking, embedding, retrieval, generation—including **detected language**—vector store), aggregate `scores`, `final_score`, timing; Responses API request template (`input`, `tools`, `instructions`, `metadata`); `vector store binding`. Single source of truth for registration, deployment, and code generation |
+| `pattern.json` | Authoritative pattern record from _ai4rag_: name, iteration, `RAG configurations` (chunking, embedding, retrieval, generation—including **detected language**—vector store), `evaluation` metadata, aggregate `scores`, `final_score`, timing; Responses API request template (`input`, `tools`, `instructions`, `metadata`); `vector store binding`. Single source of truth for registration, deployment, and code generation |
 | `indexing_notebook.ipynb` | Indexing notebook instantiated from templates (e.g., `ls_indexing_template.ipynb`), parameterized for this pattern |
 | `inference_notebook.ipynb` | Inference notebook instantiated from templates (e.g., `ls_inference_template.ipynb`), parameterized for this pattern |
 | `evaluation_results.json` | Evaluation payload (per-question scores, traces, metadata) --- the dedicated evaluation file; aggregate numbers also appear in `pattern.json` for leaderboard use |
@@ -179,6 +205,13 @@ The separate `v1_responses_body.json` artifact is **eliminated**. The Responses 
 - **`settings.generation.detected_language`** (object): Language detected from the benchmark / evaluation corpus during optimization (e.g. from test-data questions). Downstream UIs and deployment tooling can use this to label patterns, pre-fill locale settings, or align user-facing copy with the language the optimizer assumed.
   - **`code`** (string): ISO 639-1 language code (e.g. `"ja"`, `"en"`)
   - **`name`** (string): Human-readable language name (e.g. `"Japanese"`, `"English"`)
+
+- **`evaluation`** (array): Output metadata recording which internal evaluators produced which metrics (not a pipeline input). See [RAG pattern evaluation](./rag_pattern_evaluation.md).
+  - **`evaluator`** (string): `judge` (`LLMaJEvaluator`) or `unitxt` (`UnitxtEvaluator`)
+  - **`model_id`** (string, judge entries only): Judge model used for `answer_relevance`
+  - **`metrics`** (array): Metric names scored by that backend
+
+- **`scores`** (object): Per-metric aggregates with **`mean`**, **`ci_low`**, **`ci_high`** for `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, and derived `overall_score`. **`final_score`** mirrors the pipeline `optimization_metric` (default `overall_score`).
 
 ### Target payloads (examples)
 
@@ -272,6 +305,23 @@ Illustrative shape for **`pattern.json`** with **Responses API template** and **
          ]
       }
    },
+   "evaluation":[
+      {
+         "evaluator":"judge",
+         "model_id":"gpt-4.1-mini",
+         "metrics":[
+            "answer_relevance"
+         ]
+      },
+      {
+         "evaluator":"unitxt",
+         "metrics":[
+            "faithfulness",
+            "answer_correctness",
+            "context_correctness"
+         ]
+      }
+   ],
    "scores":{
       "faithfulness":{
          "mean":0.91,
@@ -282,9 +332,24 @@ Illustrative shape for **`pattern.json`** with **Responses API template** and **
          "mean":0.82,
          "ci_low":0.78,
          "ci_high":0.86
+      },
+      "context_correctness":{
+         "mean":0.80,
+         "ci_low":0.70,
+         "ci_high":0.90
+      },
+      "answer_relevance":{
+         "mean":0.80,
+         "ci_low":0.70,
+         "ci_high":0.90
+      },
+      "overall_score":{
+         "mean":0.84,
+         "ci_low":0.79,
+         "ci_high":0.89
       }
    },
-   "final_score":0.87
+   "final_score":0.84
 }
 ```
 
