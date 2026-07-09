@@ -98,5 +98,9 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Related
 
+- [RAG pattern inference](./rag_pattern_inference.md) — artifact layout
+- [MLflow integration](./mlflow_integration.md) — tracing and runs
+- [Chunking and retrieval methods](./chunking_and_retrievals_methods.md)
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
+- [LightRAG RAGAS evaluation](https://github.com/HKUDS/LightRAG/blob/main/lightrag/evaluation/README_EVALUASTION_RAGAS.md)
 - [ai4rag evaluation guide](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)
