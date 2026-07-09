@@ -25,12 +25,7 @@ AutoRAG routes metrics to internal backends; callers do not configure an **`eval
 
 Per-question scores are **0–1** floats; aggregates use **`mean`, `ci_low`, `ci_high`** ([ai4rag shape](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)). All metrics run every optimization; only **`optimization_metric`** selects the GAM objective.
 
-Pipeline parameters on **`documents_rag_optimization_pipeline`**:
-
-| Parameter | Default | Role |
-|-----------|---------|------|
-| `optimization_metric` | **`overall_score`** | GAM objective (`objective_metric` in ai4rag) |
-| `judge_model_id` | *(auto-select)* | Optional override for the LLMaJ model behind `answer_relevance` |
+Pipeline parameter on **`documents_rag_optimization_pipeline`**: **`optimization_metric`** (default **`overall_score`**) selects the GAM objective (`objective_metric` in ai4rag).
 
 `answer_relevance` cost scales with benchmark rows × patterns.
 
@@ -38,17 +33,14 @@ Pipeline parameters on **`documents_rag_optimization_pipeline`**:
 
 ## Judge model
 
-One judge per optimization run, used only for **`answer_relevance`**. Prefer a judge distinct from the **generation** model; when only one model is deployed, judge **`model_id` may equal `generation.model_id`**.
-
-- **Override:** set pipeline `judge_model_id`.
-- **Default:** ai4rag auto-selects in **`search_space_preparation`** from the validated generation-model pool.
+One judge per optimization run, used only for **`answer_relevance`**. ai4rag auto-selects it in **`search_space_preparation`** from the validated generation-model pool. The chosen **`model_id`** is recorded in `pattern.json` → `evaluation` (see [Artifacts](#artifacts)). Prefer a judge distinct from the **generation** model; when only one model is deployed, judge **`model_id` may equal `generation.model_id`**.
 
 | Available models | Selection |
 |------------------|-----------|
 | **1** | Use that model |
-| **2+** | [Calibration](#calibration) on `min(20, 10% of rows)`; record winner in `pattern.json` → `evaluation` |
+| **2+** | [Calibration](#calibration) on `min(20, 10% of rows)` |
 
-Judge rubrics and temperature use **ai4rag defaults** (not pipeline parameters).
+Judge rubrics and temperature use **ai4rag defaults**.
 
 ### Calibration
 
@@ -63,7 +55,7 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Artifacts
 
-`pattern.json` → **`evaluation`** records which backends produced which metrics (output only, not a pipeline input). See [full schema](./rag_pattern_inference.md#example-patternjson).
+`pattern.json` → **`evaluation`** records which backends produced which metrics, including the auto-selected judge **`model_id`** for `answer_relevance`. See [full schema](./rag_pattern_inference.md#example-patternjson).
 
 ```json
 {
