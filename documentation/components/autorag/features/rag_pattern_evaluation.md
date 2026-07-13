@@ -24,7 +24,7 @@ AutoRAG routes metrics to internal backends; callers do not configure an **`eval
 | `answer_relevance` | `judge` | Does the answer address the question? |
 | `overall_score` | `custom` | Equal-weight mean of the four metrics |
 
-Per-question values are **0–1** floats. At pattern level, each `evaluation.metrics[]` entry carries **`scores`** with **`mean`, `ci_low`, `ci_high`** (aggregated across benchmark rows). All metrics run every optimization; **`optimization_metric`** (pipeline parameter, default **`overall_score`**) selects the GAM objective and is recorded in `evaluation.optimization_metric`. **`final_score`** is the mean of the metric named by `optimization_metric`.
+Per-question values are **0–1** floats. At pattern level, each `evaluation.metrics[]` entry carries **`scores`** with **`mean`, `ci_low`, `ci_high`** (aggregated across benchmark rows). All metrics run every optimization; the pipeline **`optimization_metric`** parameter (default **`overall_score`**) selects the GAM objective. The matching `metrics[]` entry is marked with **`optimization_metric: true`** — use its **`scores.mean`** for pattern ranking.
 
 `answer_relevance` cost scales with benchmark rows × patterns.
 
@@ -54,13 +54,11 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Artifacts
 
-`pattern.json` → **`evaluation`** holds run-level aggregates (`metrics`, `optimization_metric`, `final_score`). Field reference below; full `pattern.json` example in [RAG pattern inference](./rag_pattern_inference.md#example-patternjson).
+`pattern.json` → **`evaluation`** holds run-level aggregates in **`metrics[]`**. Field reference below; full `pattern.json` example in [RAG pattern inference](./rag_pattern_inference.md#example-patternjson).
 
 | Field | Description |
 |-------|-------------|
-| `metrics[]` | One entry per metric: `evaluator`, `name`, `description`, `scores`; `model_id` on judge entries |
-| `optimization_metric` | Pipeline GAM objective used for this run |
-| `final_score` | `scores.mean` of the metric named by `optimization_metric` |
+| `metrics[]` | One entry per metric: `evaluator`, `name`, `description`, `scores`; `model_id` on judge entries; `optimization_metric: true` on the GAM objective entry |
 
 ---
 

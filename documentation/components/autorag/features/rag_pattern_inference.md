@@ -35,7 +35,9 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
 | `settings` | Optimized RAG config: `vector_store_binding`, `chunking`, `embedding`, `retrieval`, `generation` (incl. `detected_language`) |
 | `inference.responses_template` | Frozen `POST /v1/responses` body — [Retrieve and generation](#retrieve-and-generation) |
 | `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
-| `evaluation` | `metrics`, `optimization_metric`, `final_score` — [RAG pattern evaluation](./rag_pattern_evaluation.md) |
+| `evaluation` | `metrics[]` — one entry has `optimization_metric: true` (GAM objective); see [RAG pattern evaluation](./rag_pattern_evaluation.md) |
+
+> **Note:** Top-level `evaluation.optimization_metric` and `evaluation.final_score` are removed. The pipeline objective is marked on the matching `metrics[]` entry (`optimization_metric: true`); use that entry's `scores.mean` for pattern ranking.
 
 ---
 
@@ -163,7 +165,7 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
          {
             "evaluator":"unitxt",
             "name":"faithfulness",
-            "description":"",
+            "description":"Whether the generated answer is supported by the retrieved context.",
             "scores":{
                "mean":0.91,
                "ci_low":0.88,
@@ -173,7 +175,7 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
          {
             "evaluator":"unitxt",
             "name":"answer_correctness",
-            "description":"",
+            "description":"How well the generated answer matches ground-truth benchmark answers.",
             "scores":{
                "mean":0.82,
                "ci_low":0.78,
@@ -183,7 +185,7 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
          {
             "evaluator":"unitxt",
             "name":"context_correctness",
-            "description":"",
+            "description":"Whether retrieval returned sufficient context to answer the question.",
             "scores":{
                "mean":0.80,
                "ci_low":0.70,
@@ -194,7 +196,7 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
             "evaluator":"judge",
             "model_id":"gpt-4.1-mini",
             "name":"answer_relevance",
-            "description":"",
+            "description":"Whether the generated answer addresses the benchmark question.",
             "scores":{
                "mean":0.91,
                "ci_low":0.88,
@@ -204,16 +206,15 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
          {
             "evaluator":"custom",
             "name":"overall_score",
-            "description":"",
+            "optimization_metric": true,
+            "description":"Equal-weight mean of faithfulness, answer_correctness, context_correctness, and answer_relevance. GAM objective for this pattern.",
             "scores":{
                "mean":0.84,
                "ci_low":0.79,
                "ci_high":0.89
             }
          }
-      ],
-      "optimization_metric":"faithfulness",
-      "final_score":0.91
+      ]
    }
 }
 ```

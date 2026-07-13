@@ -70,7 +70,7 @@ Design follows the same concepts as the AutoML doc: **one parent run per KFP pip
 | **Traces** | **Required** when `MLFLOW_TRACKING_URI` is set. **One trace per benchmark request**, attached to the **pattern child run** (not the parent). If the eval set has *N* rows and the pipeline produces *P* patterns, expect **P × N** traces total (*N* under each pattern’s child run). |
 | **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with [MLflow `SpanType`](https://mlflow.org/docs/latest/genai/concepts/span#span-types) where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for OGX `responses.create`. |
 | **Params (child)** | From **`pattern.json`** → `settings`: e.g. `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id`, `vector_store_binding` fields (`provider_id`, `provider_type`, `vector_store_id`, `vector_store_name`); from **`inference.responses_template`**: key fields as flattened params. |
-| **Metrics (child)** | From **`pattern.json`**: `duration_seconds`, `iteration`; from **`evaluation`**: `final_score`, `optimization_metric`, and per-metric `scores.mean` in `metrics[]` — use **`mlflow.log_metric`** for scalars. |
+| **Metrics (child)** | From **`pattern.json`**: `duration_seconds`, `iteration`; from **`evaluation.metrics[]`**: `log_metric(name, scores.mean)` per entry; objective score from the entry with `optimization_metric: true` (log as `final_score` for UI compatibility). |
 | **Child Artifacts** | Pointers to KFP artifacts: **`pattern.json`**, **`evaluation_results.json`**, **`indexing_notebook.ipynb`**, **`inference_notebook.ipynb`**. Logged as params containing artifact URIs/paths, not copied into MLflow. |
 
 ---
@@ -119,9 +119,13 @@ def log_pattern_to_mlflow(pattern: dict, pattern_dir: Path, parent_run_id: str) 
                 "retrieval_top_k": str(settings.get("retrieval", {}).get("top_k", "")),
             })
             evaluation = pattern.get("evaluation", {})
-            mlflow.log_metric("final_score", evaluation.get("final_score", 0))
-            if evaluation.get("optimization_metric"):
-                mlflow.log_param("optimization_metric", evaluation["optimization_metric"])
+            objective = next(
+                (m for m in evaluation.get("metrics", []) if m.get("optimization_metric")),
+                None,
+            )
+            if objective:
+                mlflow.log_param("optimization_metric", objective["name"])
+                mlflow.log_metric("final_score", objective.get("scores", {}).get("mean", 0))
             if "duration_seconds" in pattern:
                 mlflow.log_metric("duration_seconds", pattern["duration_seconds"])
             for metric in evaluation.get("metrics", []):
@@ -159,7 +163,10 @@ def rag_templates_optimization(...):
         if tracking:
             log_pattern_to_mlflow(pattern, pattern_dir, parent_run_id)
 
-    return {"num_patterns": len(patterns), "best_score": max(p["evaluation"]["final_score"] for p in patterns)}
+    return {"num_patterns": len(patterns), "best_score": max(
+        next(m["scores"]["mean"] for m in p["evaluation"]["metrics"] if m.get("optimization_metric"))
+        for p in patterns
+    )}
 ```
 
 ### Metrics logged (child runs)
@@ -168,7 +175,7 @@ ai4rag already computes RAGAS-style metrics during optimization. Log **aggregate
 
 | Source field | MLflow |
 |--------------|--------|
-| `final_score` | `log_metric("final_score", ...)` from `evaluation.final_score` |
+| Objective metric `scores.mean` | `log_metric("final_score", ...)` from the `metrics[]` entry with `optimization_metric: true` |
 | `metrics[].name` | `log_metric(name, scores.mean)` for each entry in `evaluation.metrics` |
 | `duration_seconds` | `log_metric("duration_seconds", ...)` |
 
