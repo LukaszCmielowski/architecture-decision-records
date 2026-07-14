@@ -43,7 +43,7 @@ Each preset fixes **ingestion and chunking search-space defaults**; ai4rag still
 | `speed` (default) | 4 vCPU / 16 GiB | `recursive` only | `do_table_structure: false` | not explored | 10 |
 | `balanced` | 8 vCPU / 32 GiB | `recursive` + `hybrid` | `do_table_structure: true` ([TableFormer](https://docling-project.github.io/docling/guides/pdf-processing/)) | explored (`enabled: true`) | 4 |
 
-**`balanced` additionally:** `include_context: true` on hybrid trials (Docling `contextualize()` — structural metadata, no LLM). See [Chunking methods](#chunking-methods).
+**`balanced` additionally:** `include_metadata: true` on hybrid trials — embed text includes structural metadata via Docling `contextualize()` (headings, captions; no LLM). See [Chunking methods](#chunking-methods).
 
 Docling extraction (`text_extraction`) is fixed per run by the preset, not repeated in each `pattern.json`. Use `speed` for plain text or quick runs; `balanced` for structured PDFs/DOCX with tables and headings.
 
@@ -58,7 +58,7 @@ Chunking splits documents into embeddable segments. **`chunking`** fields contro
 | `method` | Input | Behavior | Typical use |
 |----------|-------|----------|-------------|
 | `recursive` | Flat text or Markdown (`export_to_markdown()` from `DoclingDocument`) | Separator cascade (`\n\n` → `\n` → ` `) with `chunk_size` / `chunk_overlap` | General text, `speed` preset |
-| `hybrid` | `DoclingDocument` tree | `HybridChunker`: structure-aware boundaries + tokenizer-aware split/merge; optional `include_context`, `merge_lists` | Structured PDFs/DOCX, `balanced` preset |
+| `hybrid` | `DoclingDocument` tree | `HybridChunker`: structure-aware boundaries + tokenizer-aware split/merge; optional `include_metadata` → Docling `contextualize()` | Structured PDFs/DOCX, `balanced` preset |
 
 [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/) distinguish **Markdown export + post-split** (recursive path) from **native chunkers on the document model** (hybrid).
 
@@ -67,15 +67,23 @@ Chunking splits documents into embeddable segments. **`chunking`** fields contro
 ```
 text_extraction → DoclingDocument (JSON/YAML + artifacts) → manifest
 rag_templates_optimization → load DoclingDocument per trial → branch on chunking.method
-  hybrid: chunk on model (+ optional contextualize())
+  hybrid: HybridChunker → embed contextualize(chunk) when include_metadata
   recursive: export_to_markdown() → split string
 ```
 
 One parse per document; trials branch on `chunking.method` without re-parsing PDFs. Persist with `doc.save_as_json()` / `save_as_yaml()` using `ImageRefMode.REFERENCED` and an `artifacts_dir`; record docling version in a sidecar manifest.
 
+### Docling hybrid — `include_metadata`
+
+Hybrid-only boolean. When `true`, indexing uses Docling **`contextualize(chunk)`** — structural metadata (section headings, captions, etc.) is inlined into the text sent to the embedding model, not stored as separate vector fields. Implementation calls Docling’s API; the `pattern.json` field is **`include_metadata`**.
+
+| Field | Role |
+|-------|------|
+| `include_metadata` | Use `contextualize(chunk)` for embed/BM25 text (`hybrid` only; explored on `balanced` preset) |
+
 ### LLM contextual enrichment
 
-Configured under **`chunking.contextual_enrichment`** (index time, not retrieval). Separate from Docling **`contextualize()`** (deterministic structural metadata only).
+Configured under **`chunking.contextual_enrichment`** (index time, not retrieval). Separate from **`chunking.include_metadata`** (Docling structural metadata via `contextualize()`).
 
 | Field | Role |
 |-------|------|
@@ -89,7 +97,7 @@ Configured under **`chunking.contextual_enrichment`** (index time, not retrieval
 |-----------|-------|
 | `method` | `recursive`, `hybrid` |
 | `chunk_size`, `chunk_overlap` | Splitter limits |
-| `merge_lists`, `include_context`, `max_heading_depth` | Docling-native options |
+| `include_metadata` | Docling hybrid — structural metadata in embed text (`contextualize()`) |
 | `contextual_enrichment.*` | LLM enrichment at indexing |
 
 **Example (`balanced` hybrid trial):**
@@ -100,8 +108,7 @@ Configured under **`chunking.contextual_enrichment`** (index time, not retrieval
     "method": "hybrid",
     "chunk_size": 1024,
     "chunk_overlap": 50,
-    "include_context": true,
-    "merge_lists": true,
+    "include_metadata": true,
     "contextual_enrichment": {
       "enabled": true,
       "context_generation_model": "granite-3.1-8b-instruct"
