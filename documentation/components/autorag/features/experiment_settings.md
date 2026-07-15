@@ -30,7 +30,7 @@ Public surface of [`pipeline.py`](https://github.com/red-hat-data-services/pipel
 | `generation_models` | `Optional[List[str]]` | `None` | Optional generation model allow-list for the search space |
 | `optimization_metric` | `str` | `overall_score` | GAM objective: `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score` |
 | `optimization_max_rag_patterns` | `int` | `8` | Max patterns to evaluate and retain |
-| `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, and indexing defaults ([Presets](#presets)); logged in MLflow |
+| `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, and indexing defaults ([Presets](#presets)) |
 
 ---
 

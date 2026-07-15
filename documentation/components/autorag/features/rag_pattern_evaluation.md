@@ -74,7 +74,7 @@ Each pattern subdirectory under **`rag_patterns/<pattern_name>/`** also contains
 | `answer_contexts[]` | Retrieved chunks: `text`, `document_id` |
 | `metrics[]` | Per-metric scores for this row: `name`, `evaluator`, `score` (**0–1** float); `name` matches `evaluation.metrics[].name` in `pattern.json` |
 
-When MLflow tracing is enabled, equivalent retrieval/generation/evaluation detail may appear as per-row traces ([MLflow integration](./mlflow_integration.md)); KFP **`evaluation_results.json`** remains the source of truth for row-level scores.
+KFP **`evaluation_results.json`** is the source of truth for row-level scores and retrieved context.
 
 ```json
 [

@@ -291,7 +291,7 @@ Index building populates the production vector store via the managed **`document
 
 **Workflow:** optimization completes → user selects pattern → read `pipeline_spec` → resolve managed pipeline → pre-fill run form → user confirms/overrides → submit → full corpus indexed → [retrieve and generation](#retrieve-and-generation) ready.
 
-**Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding → vector store write → validation/logging. Observable via KFP and MLflow; re-runnable when documents or overrides change.
+**Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change.
 
 ---
 
@@ -299,5 +299,4 @@ Index building populates the production vector store via the managed **`document
 
 - [RAG pattern evaluation](./rag_pattern_evaluation.md)
 - [AutoRAG optimization settings](./experiment_settings.md) — pipeline parameters, presets, chunking, retrieval
-- [MLflow integration](./mlflow_integration.md)
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)

@@ -210,7 +210,6 @@ Specific parameter names, presets, retrieval modes, and metric backends are **no
   * [Experiment settings](../../documentation/components/autorag/features/experiment_settings.md)
   * [RAG pattern inference](../../documentation/components/autorag/features/rag_pattern_inference.md)
   * [RAG pattern evaluation](../../documentation/components/autorag/features/rag_pattern_evaluation.md)
-  * [MLflow integration](../../documentation/components/autorag/features/mlflow_integration.md)
 
 ## Reviews
 
