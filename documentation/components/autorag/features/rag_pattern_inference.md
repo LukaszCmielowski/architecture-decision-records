@@ -35,9 +35,9 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
 | `settings` | Optimized RAG config: `vector_store_binding`, `chunking`, `embedding`, `retrieval`, `generation` (incl. `detected_language`) |
 | `inference.responses_template` | Frozen `POST /v1/responses` body — [Retrieve and generation](#retrieve-and-generation) |
 | `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
-| `evaluation` | `metrics[]` — one entry has `optimization_metric: true` (GAM objective); see [RAG pattern evaluation](./rag_pattern_evaluation.md) |
+| `evaluation` | `metrics[]` — per-metric `evaluator`, `name`, `scores` (`mean`, `ci_low`, `ci_high`); exactly one entry has `optimization_metric: true` (GAM objective). See [RAG pattern evaluation](./rag_pattern_evaluation.md) |
 
-> **Note:** Top-level `evaluation.optimization_metric` and `evaluation.final_score` are removed. The pipeline objective is marked on the matching `metrics[]` entry (`optimization_metric: true`); use that entry's `scores.mean` for pattern ranking.
+GAM ranks patterns by the pipeline [`optimization_metric`](./experiment_settings.md) parameter (default `overall_score`). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
 
 ---
 
