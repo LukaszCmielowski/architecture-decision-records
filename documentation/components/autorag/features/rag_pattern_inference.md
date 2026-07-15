@@ -6,6 +6,7 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 
 - [Optimization pipeline](#optimization-pipeline)
 - [pattern.json schema](#patternjson-schema)
+  - [Target schema](#target-schema)
 - [Example pattern.json](#example-patternjson)
 - [Retrieve and generation](#retrieve-and-generation)
 - [Index building](#index-building)
@@ -28,6 +29,29 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
 ---
 
 ## pattern.json schema
+
+### Target schema
+
+```text
+pattern.json
+├── name, iteration, max_combinations, duration_seconds
+├── settings
+│   ├── vector_store_binding
+│   ├── chunking, embedding, retrieval, generation
+│   └── generation.language (optional, {code, name})
+├── inference
+│   └── responses_template
+├── indexing
+│   └── pipeline_spec
+│       ├── pipeline_name
+│       ├── parameters
+│       └── overrides_allowed
+└── evaluation
+    └── metrics[]
+        ├── evaluator, name, description, scores (mean, ci_low, ci_high)
+        ├── model_id (judge entries only)
+        └── optimization_metric: true (exactly one entry — GAM objective)
+```
 
 | Field | Description |
 |-------|-------------|
