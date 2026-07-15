@@ -32,7 +32,7 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
 | Field | Description |
 |-------|-------------|
 | `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time |
-| `settings` | Optimized RAG config: `vector_store_binding`, `chunking`, `embedding`, `retrieval`, `generation` (incl. `detected_language`) |
+| `settings` | Optimized RAG config: `vector_store_binding`, `chunking`, `embedding`, `retrieval`, `generation` (incl. `language` — benchmark language from search-space preparation, `{code, name}`) |
 | `inference.responses_template` | Frozen `POST /v1/responses` body — [Retrieve and generation](#retrieve-and-generation) |
 | `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
 | `evaluation` | `metrics[]` — per-metric `evaluator`, `name`, `scores` (`mean`, `ci_low`, `ci_high`); exactly one entry has `optimization_metric: true` (GAM objective). See [RAG pattern evaluation](./rag_pattern_evaluation.md) |
@@ -80,7 +80,7 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./experiment_settings
          "context_template_text":"{document}",
          "user_message_text":"…",
          "system_message_text":"…",
-         "detected_language":{
+         "language":{
             "code":"ja",
             "name":"Japanese"
          }
