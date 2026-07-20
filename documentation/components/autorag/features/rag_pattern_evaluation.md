@@ -126,6 +126,8 @@ KFP **`evaluation_results.json`** is the source of truth for row-level scores an
 ## Related
 
 - [RAG pattern inference](./rag_pattern_inference.md) — full `pattern.json` schema and artifact layout
+- [RAG templates](./rag_templates.md) — current simple template vs planned Graph RAG
 - [AutoRAG optimization settings](./experiment_settings.md) — `optimization_metric` pipeline parameter
+- [Prompt tuning](./prompt_tuning.md) — optional DSPy prompt pre-optimization before GAM
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
 - [ai4rag evaluation guide](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)

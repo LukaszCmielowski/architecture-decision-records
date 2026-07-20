@@ -299,5 +299,6 @@ Index building populates the production vector store via the managed **`document
 ## Related
 
 - [RAG pattern evaluation](./rag_pattern_evaluation.md)
+- [RAG templates](./rag_templates.md) — current simple template vs planned Graph RAG
 - [AutoRAG optimization settings](./experiment_settings.md) — pipeline parameters, presets, chunking, retrieval
 - [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)

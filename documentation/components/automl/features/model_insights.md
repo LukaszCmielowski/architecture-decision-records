@@ -6,10 +6,13 @@ Artifacts produced under each refitted model directory (`{model_name}_FULL/`) by
 
 - [Tabular pipeline](#tabular-pipeline)
   - [Per refitted model (`{model_name}_FULL`)](#per-refitted-model-model_name_full)
+  - [Example: `model.json` (tabular)](#example-modeljson-tabular)
+  - [`input_data_schema` (KServe scoring)](#input_data_schema-kserve-scoring)
   - [Example: `curves.json` (binary classification)](#example-curvesjson-binary-classification)
   - [Example: `curves.json` (multiclass, one-vs-rest)](#example-curvesjson-multiclass-one-vs-rest)
 - [Timeseries pipeline](#timeseries-pipeline)
   - [Per refitted model (`{model_name}_FULL`)](#per-refitted-model-model_name_full-1)
+  - [Example: `model.json` (time series)](#example-modeljson-time-series)
   - [Example: `back_testing.json` (time series)](#example-back_testingjson-time-series)
   - [Visualization use cases](#visualization-use-cases)
 
@@ -29,11 +32,117 @@ One combined **`Model`** artifact from **`autogluon_models_training`** (`models_
 | `metrics/curves.json` | **Classification only** — ROC and precision-recall curve points/thresholds for visualization (same applicability as `confusion_matrix.json`). |
 | `notebooks/automl_predictor_notebook.ipynb` | Embedded regression/classification template with run, pipeline, model, and sample-row placeholders. |
 | `predictor/` | **`clone_for_deployment`** export for that model. |
-| `model.json` | **`name`**, **`location`**, **`metrics.test_data`** (same scores as `metrics/metrics.json`). |
+| `model.json` | **`name`**, **`location`**, **`metrics.test_data`**, **`input_data_schema`** (tabular feature contract for KServe AutoGluon scoring). See [Example: `model.json` (tabular)](#example-modeljson-tabular). |
 
 **`metadata`:** `model_names` (JSON **string** list, KFP workaround) and **`context`** (`task_type`, `label_column`, `model_config`, `data_config`, `models` mirroring each `model.json`). Returned **`eval_metric`** wires the leaderboard sort column.
 
 **`curves.json` alignment:** serializes `sklearn.metrics.roc_curve()` / `precision_recall_curve()` outputs from probabilities via `predictor.predict_proba(X_test)`. **Regression** runs do not emit this file.
+
+### Example: `model.json` (tabular)
+
+Written by **`autogluon_models_training`** under each `{model_name}_FULL/` directory. The on-disk file matches the corresponding entry in `models_artifact.metadata.context.models`, so downstream consumers can read metadata from the filesystem without relying on KFP artifact metadata propagation.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| **`name`** | `str` | Refitted model id with `_FULL` suffix (e.g. `"LightGBM_BAG_L1_FULL"`). |
+| **`location`** | `dict` | Paths **relative to** `models_artifact.path`: `model_directory`, `predictor`, `notebook`, `metrics`. |
+| **`metrics.test_data`** | `dict` | Metric name → value from `evaluate_predictions` on the test split (same content as `metrics/metrics.json`; non-finite values stripped). |
+| **`input_data_schema`** | `list[dict]` | Feature contract for scoring a deployed predictor on **KServe AutoGluon ServingRuntime** — see [`input_data_schema` (KServe scoring)](#input_data_schema-kserve-scoring). |
+
+```json
+{
+  "name": "LightGBM_BAG_L1_FULL",
+  "location": {
+    "model_directory": "LightGBM_BAG_L1_FULL",
+    "predictor": "LightGBM_BAG_L1_FULL/predictor",
+    "notebook": "LightGBM_BAG_L1_FULL/notebooks/automl_predictor_notebook.ipynb",
+    "metrics": "LightGBM_BAG_L1_FULL/metrics"
+  },
+  "metrics": {
+    "test_data": {
+      "root_mean_squared_error": 0.42,
+      "r2": 0.85
+    }
+  },
+  "input_data_schema": [
+    { "name": "bedrooms", "datatype": "INT64", "shape": [-1] },
+    { "name": "sqft", "datatype": "FP64", "shape": [-1] },
+    { "name": "location", "datatype": "BYTES", "shape": [-1] }
+  ]
+}
+```
+
+**`location` keys:**
+
+| Key | Points to |
+|-----|-----------|
+| `model_directory` | `{name}/` root for this refit |
+| `predictor` | `{name}/predictor` — `clone_for_deployment` export |
+| `notebook` | `{name}/notebooks/automl_predictor_notebook.ipynb` |
+| `metrics` | `{name}/metrics/` directory (`metrics.json`, feature importance, curves, …) |
+
+**Relationship to artifact metadata:** each `context.models[]` entry is the same JSON object as that model’s `model.json` (including `input_data_schema` when present). `model_names` is a JSON-encoded string list of those names (KFP metadata workaround).
+
+### `input_data_schema` (KServe scoring)
+
+`input_data_schema` describes the **tabular feature tensors** clients must send when scoring a model deployed with the **KServe AutoGluon ServingRuntime** (`modelFormat.name: autogluon`). It mirrors the runtime’s v2 model-metadata inputs (`GET /v2/models/{name}` / `get_input_types()` in the [KServe AutoGluon server](https://github.com/kserve/kserve/tree/master/python/autogluonserver)).
+
+**Purpose:** Dashboard, notebooks, and other consumers can build valid score payloads from `model.json` without loading AutoGluon or calling the live endpoint first. After deploy, the runtime still derives the same contract from the loaded `TabularPredictor`.
+
+**Source (from the trained predictor):**
+
+| Source | Role |
+|--------|------|
+| `predictor.features()` | Ordered feature / column names (one schema entry per feature) |
+| `predictor.feature_metadata.type_map_raw` | AutoGluon raw type per feature → mapped to a KServe v2 `datatype` |
+
+**Per-feature object:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| **`name`** | `str` | Feature column name; must match training columns and v2 `inputs[].name` |
+| **`datatype`** | `str` | Open Inference Protocol / KServe v2 tensor datatype (see mapping below) |
+| **`shape`** | `list[int]` | Always `[-1]` — batch dimension; each feature tensor is shape `[batch]` (or `[batch, 1]`, flattened by the server) |
+
+**AutoGluon raw type → KServe v2 `datatype` (same mapping as the AutoGluon server):**
+
+| AutoGluon `type_map_raw` | `datatype` |
+|--------------------------|------------|
+| `int`, `int8`…`int64`, `uint*` | `INT64` |
+| `float`, `float16`…`float64` | `FP64` |
+| `bool` / `boolean` | `BOOL` |
+| `category`, `object`, `text`, `datetime`, unknown | `BYTES` |
+
+**Using the schema to score**
+
+**REST v1** (`POST /v1/models/{name}:predict`) — list of row objects; keys = feature `name`s:
+
+```json
+{
+  "instances": [
+    { "bedrooms": 3, "sqft": 1200.0, "location": "urban" },
+    { "bedrooms": 2, "sqft": 900.0, "location": "suburban" }
+  ]
+}
+```
+
+**REST v2** — one input tensor per feature, names/datatypes/order aligned with `input_data_schema` (batch size 2 in this example):
+
+```json
+{
+  "inputs": [
+    { "name": "bedrooms", "shape": [2], "datatype": "INT64", "data": [3, 2] },
+    { "name": "sqft", "shape": [2], "datatype": "FP64", "data": [1200.0, 900.0] },
+    { "name": "location", "shape": [2], "datatype": "BYTES", "data": ["urban", "suburban"] }
+  ]
+}
+```
+
+**Notes:**
+
+- Schema is **tabular**. Time-series deploy uses REST v1 JSON (`instances` / optional `known_covariates`) plus `predictor_metadata.json` for id/timestamp columns — not this tensor list.
+- Classification may return labels by default, or class probabilities when the runtime has `PREDICT_PROBA=true` (see AutoGluon server docs).
+- `storageUri` for KServe must point at the `clone_for_deployment` **`predictor/`** directory referenced by `location.predictor`, not at `model.json` itself.
 
 ### Example: `curves.json` (binary classification)
 
@@ -305,9 +414,43 @@ Per-class baselines shown as horizontal lines at respective precision values
 | `predictor/` | Saved **`TimeSeriesPredictor`**. |
 | `predictor/predictor_metadata.json` | Model id, **`prediction_length`**, **`eval_metric`**, **`target`**, **`id_column`**, **`timestamp_column`**. |
 | `notebooks/automl_predictor_notebook.ipynb` | **`timeseries_notebook.ipynb`** template with run / pipeline / model / sample / column placeholders. |
-| `model.json` | **`name`**, **`base_model`**, **`location`**, **`metrics.test_data`**. |
+| `model.json` | **`name`**, **`location`**, **`metrics.test_data`**. Optional **`location.back_testing`** when `back_testing.json` was written. See [Example: `model.json` (time series)](#example-modeljson-time-series). |
 
 **No** `feature_importance.json`, `confusion_matrix.json`, or `curves.json` for time-series.
+
+### Example: `model.json` (time series)
+
+Written by **`autogluon_timeseries_models_training`** (or the full-refit path that emits per-model artifacts) under each `{model_name}_FULL/` directory. Schema matches the tabular file, with an optional extra location key when multi-window backtesting succeeded.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| **`name`** | `str` | Refitted model id with `_FULL` suffix (e.g. `"DeepAR_FULL"`). |
+| **`location`** | `dict` | Relative paths: `model_directory`, `predictor`, `notebook`, `metrics`; plus **`back_testing`** when `metrics/back_testing.json` exists. |
+| **`metrics.test_data`** | `dict` | Metric name → value from time-series **`evaluate`** on held-out test data (same scores as `metrics/metrics.json`; non-finite stripped). |
+
+```json
+{
+  "name": "DeepAR_FULL",
+  "location": {
+    "model_directory": "DeepAR_FULL",
+    "predictor": "DeepAR_FULL/predictor",
+    "notebook": "DeepAR_FULL/notebooks/automl_predictor_notebook.ipynb",
+    "metrics": "DeepAR_FULL/metrics",
+    "back_testing": "DeepAR_FULL/metrics/back_testing.json"
+  },
+  "metrics": {
+    "test_data": {
+      "WQL": 0.2198,
+      "MAPE": 11.87,
+      "MASE": 0.8432,
+      "RMSE": 43.21,
+      "MAE": 32.56
+    }
+  }
+}
+```
+
+If backtesting was skipped or failed for that model, **`location.back_testing` is omitted**; `metrics/back_testing.json` may also be absent.
 
 ### Example: `back_testing.json` (time series)
 

@@ -143,6 +143,8 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 
 ## Related
 
+- [RAG templates](./rag_templates.md) — current simple template vs planned Graph RAG
 - [RAG pattern inference](./rag_pattern_inference.md)
 - [RAG pattern evaluation](./rag_pattern_evaluation.md)
+- [Prompt tuning](./prompt_tuning.md)
 - [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/)

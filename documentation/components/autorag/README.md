@@ -4,7 +4,7 @@ Document RAG optimization on **Data Science Pipelines**, implemented in [pipelin
 
 **Architecture:** [ODH-ADR-0001-autorag](../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md) — goals, lifecycle (optimize → index → infer), artifacts, scope.
 
-**Feature docs:** [experiment settings](./features/experiment_settings.md) · [pattern inference](./features/rag_pattern_inference.md) · [pattern evaluation](./features/rag_pattern_evaluation.md)
+**Feature docs:** [experiment settings](./features/experiment_settings.md) · [RAG templates](./features/rag_templates.md) · [pattern inference](./features/rag_pattern_inference.md) · [pattern evaluation](./features/rag_pattern_evaluation.md) · [prompt tuning](./features/prompt_tuning.md)
 
 ## Pipelines
 
