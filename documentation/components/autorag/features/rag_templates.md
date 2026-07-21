@@ -21,6 +21,10 @@ A **RAG template** is the reusable workflow blueprint AutoRAG / ai4rag parameter
   - [Pipeline integration](#pipeline-integration)
   - [Pattern artifacts](#pattern-artifacts)
   - [Comparison](#comparison)
+    - [Where LightRAG sits](#where-lightrag-sits)
+    - [Value of LightRAG vs Relationship-Enriched RAG](#value-of-lightrag-vs-relationship-enriched-rag)
+    - [Value of LightRAG vs Neo4j GraphRAG](#value-of-lightrag-vs-neo4j-graphrag)
+    - [Decision sketch](#decision-sketch)
 - [Related](#related)
 
 ---
@@ -402,18 +406,62 @@ Neo4j GraphRAG patterns use `pattern_type: neo4j_graphrag`, `storage_profile: ne
 
 ### Comparison
 
-| | **Enriched RAG** | **LightRAG core** | **Neo4j GraphRAG** | **LangChain / LangGraph** |
-|--|------------------|-------------------|--------------------|---------------------------|
-| **Role** | Relation-enriched simple RAG (no graph DB) | Peer Graph RAG engine | Peer Graph RAG engine | Optional orchestration (mainly on Neo4j path) |
-| **ai4rag template** | `SimpleRAG` (extended search space) | `LightRAGTemplate` | `Neo4jGraphRAGTemplate` | Optional wrapper around Neo4j retrievers |
-| **DBs** | 1 (Milvus) | 1 (Postgres + AGE) or 2 (Postgres + Neo4j) | 1 (Neo4j) | Same as Neo4j if used |
-| **Graph build** | LightRAG `extract_entities()` → metadata (no persistent graph) | Built-in `insert` | `SimpleKGPipeline` / `GraphSchema` | Prefer not as primary (`LLMGraphTransformer` overlaps Neo4j native) |
-| **Retrieval** | Existing vector/hybrid + entity metadata filter/boost | Modes: naive/local/global/hybrid/mix | `Vector*` / `Hybrid*` / `Text2Cypher` / `ToolsRetriever` | Compose LCEL / LangGraph when agents are needed |
-| **Strengths** | No new infra, GAM-searchable, validates extraction value before full Graph RAG | Dual-level modes, entity/relation vector indexes, thin wrapper | Neo4j-native hybrid+Cypher, schema-guided KG, fewer DBs | Multi-system agents, HITL, tools beyond Neo4j |
-| **Limitations** | No multi-hop traversal, no global/thematic modes | Extraction LLM cost | Neo4j required | Extra layer complexity |
-| **Integration effort** | Low (pre-indexing step only) | Low | Low–medium | Medium–high (extra layer) |
+Three relationship-aware options sit on a spectrum from **reuse existing Milvus** → **full dual-level Graph RAG** → **Neo4j-native Graph RAG**. LangChain/LangGraph is **not** a peer engine — optional orchestration on the Neo4j path only.
 
-**Eval:** all templates compete on the same leaderboard; the Enriched RAG tier validates whether relationship extraction improves scores before committing to graph-database infrastructure. Engine decision for the Graph RAG product default remains open. Frontier ideas (robustness/sufficiency checks, path-ranked context, Text2Cypher, cost models such as LazyGraphRAG) can apply to either graph path without forcing an early engine pick.
+#### Where LightRAG sits
+
+| | **Relationship-Enriched RAG** | **LightRAG core** | **Neo4j GraphRAG** |
+|--|------------------------------|-------------------|--------------------|
+| **Intent** | Prove extraction helps retrieval **without** a graph DB | Own dual-level KG+vector RAG (local / global / mix) | Own Neo4j-native hybrid + Cypher RAG |
+| **ai4rag type** | `SimpleRAG` (extended search space) | `LightRAGTemplate` | `Neo4jGraphRAGTemplate` |
+| **pattern_type** | `simple` | `lightrag` | `neo4j_graphrag` |
+| **Physical DBs (typical)** | 1 — Milvus (existing) | **2** — Postgres + Neo4j (`ogx_pgvector_neo4j`), or **1** — Postgres+AGE | **1** — Neo4j only |
+| **Logical stores** | Chunk vectors (+ metadata) | **4 roles:** KV + vector + doc-status + graph (KV cannot be skipped) | Graph + vector + full-text **inside Neo4j** |
+| **Python deps** | LightRAG extract (or equivalent) only at index | `lightrag-hku` + Postgres drivers + Neo4j **or** AGE | `neo4j-graphrag` + `neo4j` (+ optional `langgraph`) |
+| **Ops surface** | Same as simple RAG + extraction LLM | Heaviest default: two DB secrets, workspace, four storage backends | One graph DB; fewer moving parts than default LightRAG |
+| **Multi-hop / thematic** | No (metadata filter/boost only) | Yes (`local` / `global` / `hybrid` / `mix`) | Yes (Cypher neighborhood, Text2Cypher, ToolsRetriever) |
+| **Reuse simple-RAG index** | Yes | No — separate LightRAG index | No — separate Neo4j indexes |
+| **Integration effort** | Low | Medium (storage profiles + reconnect) | Low–medium |
+
+#### Value of LightRAG vs Relationship-Enriched RAG
+
+Enriched RAG **borrows** LightRAG’s `extract_entities()` but never persists a traversable graph.
+
+| | Pros | Cons |
+|--|------|------|
+| **Enriched** | No new DB; stays on Milvus + existing `file_search` export; cheap way to A/B extraction on today’s leaderboard | No graph traversal, no `global`/`mix` modes; relational signal capped at metadata / embedding text |
+| **LightRAG** | True multi-hop and thematic retrieval; incremental graph+vector index; query modes tuned for entity vs corpus-level questions | Extraction cost **plus** graph/vector infra; indexes not shared with simple RAG; heavier secrets and pattern reconnect |
+
+**Takeaway:** Enriched RAG answers “does extraction help?” LightRAG answers “do we need graph-native retrieval?” Prefer Enriched first if Milvus-only ops is a hard constraint.
+
+#### Value of LightRAG vs Neo4j GraphRAG
+
+Both are peer Graph RAG engines; GA default is **open**. Difference is **stack shape**, not “graph vs no graph.”
+
+| Dimension | **LightRAG** | **Neo4j GraphRAG** |
+|-----------|--------------|--------------------|
+| **Strength** | Dual-level modes (`naive`→`mix`) and entity/relation vector indexes out of the box; thin insert/query API; can drop Neo4j via AGE | Single DB (`neo4j_hybrid_only`); schema-guided KG; first-class Hybrid/Cypher/Text2Cypher retrievers; vendor-supported `neo4j-graphrag` |
+| **Dependency weight** | **Heavier by default:** Postgres (KV+vector+doc-status) **and** Neo4j, or Postgres+AGE+`vector`; four logical backends; `lightrag-hku` surface area | **Lighter ops:** one Neo4j; fewer storage classes; deps centered on `neo4j` / `neo4j-graphrag` |
+| **Storage variety** | High — profiles span `ogx_pgvector_neo4j`, `postgres_all_in_one_age`, later `ogx_milvus_neo4j` / `dev_local` | Low — Neo4j only; incompatible with AGE / LightRAG layouts |
+| **Flexibility** | Swap graph backend (Neo4j ↔ AGE); optional future Milvus vector role | Best when Neo4j is already (or will be) platform standard; no first-class Neo4j-free path |
+| **Risk** | Community stack; more failure modes (two DBs, KV required); AGE deep hops may lag Neo4j | Couples product to Neo4j; less “mode” vocabulary than LightRAG; Text2Cypher quality depends on schema + LLM |
+
+**Takeaway:** Choose **LightRAG** when dual-level query modes and/or Neo4j-optional (AGE) deployment matter more than minimizing DB count. Choose **Neo4j GraphRAG** when one graph database, Cypher-native retrievers, and a smaller dependency footprint matter more than LightRAG’s mode set.
+
+#### Decision sketch
+
+```text
+Need relation signal but Milvus-only?
+  └─ Yes → Relationship-Enriched RAG
+
+Need multi-hop / thematic graph RAG?
+  ├─ Prefer one DB + Neo4j Cypher retrievers → Neo4j GraphRAG
+  ├─ Prefer dual-level modes / AGE (no Neo4j) → LightRAG
+  └─ Unsure → run both (`rag_template_type=both`) on the same test_data / leaderboard
+```
+
+**Eval:** Enriched, LightRAG, and Neo4j GraphRAG compete on the same metrics (`faithfulness`, `answer_correctness`, cost/latency). Product default for Graph RAG remains open until comparative runs close the gap. Frontier ideas (path-ranked context, cost models such as LazyGraphRAG) can apply to either graph path without forcing an early engine pick.
+
 
 ---
 
