@@ -33,7 +33,7 @@ One combined **`Model`** artifact from **`autogluon_models_training`** (`models_
 | `metrics/curves.json` | **Classification only** — ROC and precision-recall curve points/thresholds for visualization (same applicability as `confusion_matrix.json`). |
 | `notebooks/automl_predictor_notebook.ipynb` | Embedded regression/classification template with run, pipeline, model, and sample-row placeholders. |
 | `predictor/` | **`clone_for_deployment`** export for that model. |
-| `model.json` | **`name`**, **`location`**, **`metrics.test_data`**, **`inference.input_data_schema`** (tabular feature contract for KServe AutoGluon scoring). See [Example: `model.json` (tabular)](#example-modeljson-tabular). |
+| `model.json` | **`name`**, **`location`**, **`metrics.test_data`**, **`inference`** (`input_data_schema` + optional `sample_payload`). See [Example: `model.json` (tabular)](#example-modeljson-tabular). |
 
 **`metadata`:** `model_names` (JSON **string** list, KFP workaround) and **`context`** (`task_type`, `label_column`, `model_config`, `data_config`, `models` mirroring each `model.json`). Returned **`eval_metric`** wires the leaderboard sort column.
 
@@ -41,14 +41,14 @@ One combined **`Model`** artifact from **`autogluon_models_training`** (`models_
 
 ### Example: `model.json` (tabular)
 
-Written by **`autogluon_models_training`** under each `{model_name}_FULL/` directory. The on-disk file matches the corresponding entry in `models_artifact.metadata.context.models`, so downstream consumers can read metadata from the filesystem without relying on KFP artifact metadata propagation.
+Written by **`autogluon_models_training`** under each `{model_name}_FULL/`. Same object as `models_artifact.metadata.context.models[]` (so consumers can read from disk without KFP metadata). `model_names` is a JSON-encoded string list (KFP workaround).
 
 | Field | Type | Description |
 |-------|------|-------------|
 | **`name`** | `str` | Refitted model id with `_FULL` suffix (e.g. `"LightGBM_BAG_L1_FULL"`). |
-| **`location`** | `dict` | Paths **relative to** `models_artifact.path`: `model_directory`, `predictor`, `notebook`, `metrics`. |
-| **`metrics.test_data`** | `dict` | Metric name → value from `evaluate_predictions` on the test split (same content as `metrics/metrics.json`; non-finite values stripped). |
-| **`inference`** | `dict` | Deploy / scoring contract. Contains **`input_data_schema`** — see [`inference.input_data_schema` (tabular KServe scoring)](#inferenceinput_data_schema-tabular-kserve-scoring). |
+| **`location`** | `dict` | Paths relative to `models_artifact.path`: `model_directory`, `predictor` (`clone_for_deployment`), `notebook`, `metrics`. |
+| **`metrics.test_data`** | `dict` | Same scores as `metrics/metrics.json` (non-finite stripped). |
+| **`inference`** | `dict` | **`input_data_schema`** + optional **`sample_payload`** — see [tabular KServe scoring](#inferenceinput_data_schema-tabular-kserve-scoring). |
 
 ```json
 {
@@ -66,93 +66,84 @@ Written by **`autogluon_models_training`** under each `{model_name}_FULL/` direc
     }
   },
   "inference": {
-    "input_data_schema": [
-      { "name": "bedrooms", "datatype": "INT64", "shape": [-1] },
-      { "name": "sqft", "datatype": "FP64", "shape": [-1] },
-      { "name": "location", "datatype": "BYTES", "shape": [-1] }
-    ]
+    "input_data_schema": {
+      "protocol": "v1_json",
+      "instances": {
+        "required": true,
+        "fields": [
+          { "name": "bedrooms", "datatype": "integer", "shape": [-1], "role": "feature", "required": true },
+          { "name": "sqft", "datatype": "number", "shape": [-1], "role": "feature", "required": true },
+          { "name": "location", "datatype": "string", "shape": [-1], "role": "feature", "required": true }
+        ]
+      }
+    },
+    "sample_payload": {
+      "instances": [
+        {
+          "bedrooms": ["<integer>"],
+          "sqft": ["<number>"],
+          "location": ["<string>"]
+        }
+      ]
+    }
   }
 }
 ```
 
-**`location` keys:**
-
-| Key | Points to |
-|-----|-----------|
-| `model_directory` | `{name}/` root for this refit |
-| `predictor` | `{name}/predictor` — `clone_for_deployment` export |
-| `notebook` | `{name}/notebooks/automl_predictor_notebook.ipynb` |
-| `metrics` | `{name}/metrics/` directory (`metrics.json`, feature importance, curves, …) |
-
-**Relationship to artifact metadata:** each `context.models[]` entry is the same JSON object as that model’s `model.json` (including `inference` when present). `model_names` is a JSON-encoded string list of those names (KFP metadata workaround).
-
 ### `inference.input_data_schema` (tabular KServe scoring)
 
-`inference.input_data_schema` describes the **tabular feature tensors** clients must send when scoring a model deployed with the **KServe AutoGluon ServingRuntime** (`modelFormat.name: autogluon`). It mirrors the runtime’s v2 model-metadata inputs (`GET /v2/models/{name}` / `get_input_types()` in the [KServe AutoGluon server](https://github.com/kserve/kserve/tree/master/python/autogluonserver)).
+Offline contract for KServe AutoGluon (`modelFormat.name: autogluon`): enough to build a valid `:predict` / v2 infer body without loading AutoGluon. Same envelope as time-series (`protocol` + request keys with `required` / `fields`). Derived from `predictor.features()` and `feature_metadata.type_map_raw`.
 
-For time-series models the same path is used with a **different shape** — see [`inference.input_data_schema` (time-series KServe scoring)](#inferenceinput_data_schema-time-series-kserve-scoring).
-
-**Purpose:** Dashboard, notebooks, and other consumers can build valid score payloads from `model.json` without loading AutoGluon or calling the live endpoint first. After deploy, the runtime still derives the same contract from the loaded `TabularPredictor`.
-
-**Source (from the trained predictor):**
-
-| Source | Role |
-|--------|------|
-| `predictor.features()` | Ordered feature / column names (one schema entry per feature) |
-| `predictor.feature_metadata.type_map_raw` | AutoGluon raw type per feature → mapped to a KServe v2 `datatype` |
-
-**Per-feature object:**
+Optional **`sample_payload`**: placeholder v1 body; tokens match field `datatype` (`<integer>`, `<number>`, `<string>`, `<boolean>`). No train/PII. Method, path, and auth are client-side — see curl. Time-series adds `known_covariates` / `prediction_length` — [TS scoring](#inferenceinput_data_schema-time-series-kserve-scoring).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| **`name`** | `str` | Feature column name; must match training columns and v2 `inputs[].name` |
-| **`datatype`** | `str` | Open Inference Protocol / KServe v2 tensor datatype (see mapping below) |
-| **`shape`** | `list[int]` | Always `[-1]` — batch dimension; each feature tensor is shape `[batch]` (or `[batch, 1]`, flattened by the server) |
+| **`protocol`** | `str` | `"v1_json"` (tabular also supports v2 infer via the same `fields`) |
+| **`instances`** | `object` | `{ "required": true, "fields": [ ... ] }` |
 
-**AutoGluon raw type → KServe v2 `datatype` (same mapping as the AutoGluon server):**
+Each **`fields[]`** entry:
 
-| AutoGluon `type_map_raw` | `datatype` |
-|--------------------------|------------|
-| `int`, `int8`…`int64`, `uint*` | `INT64` |
-| `float`, `float16`…`float64` | `FP64` |
-| `bool` / `boolean` | `BOOL` |
-| `category`, `object`, `text`, `datetime`, unknown | `BYTES` |
+| Property | Type | Description |
+|----------|------|-------------|
+| **`name`** | `str` | v1 row key / v2 `inputs[].name` |
+| **`datatype`** | `str` | `integer` \| `number` \| `string` \| `boolean` (JSON-oriented; map to OIP for v2 below) |
+| **`shape`** | `list[int]` | Always `[-1]` (v2 batch dim) |
+| **`role`** | `str` | Typically `feature` (label is not an input) |
+| **`required`** | `bool` | Must appear on every row / as a v2 tensor |
 
-**Using the schema to score**
+| AutoGluon `type_map_raw` | Schema `datatype` | KServe v2 / OIP |
+|--------------------------|-------------------|-----------------|
+| `int`, `int8`…`int64`, `uint*` | `integer` | `INT64` |
+| `float`, `float16`…`float64` | `number` | `FP64` |
+| `bool` / `boolean` | `boolean` | `BOOL` |
+| `category`, `object`, `text`, `datetime`, unknown | `string` | `BYTES` |
 
-**REST v1** (`POST /v1/models/{name}:predict`) — list of row objects; keys = feature `name`s. Each value must be a **one-element list** (KServe builds `pd.DataFrame(instance)` per row; bare scalars raise).
+**Scoring:** use `sample_payload` (replace tokens) or emit `required` fields. Tabular v1 values are **one-element lists**. `storageUri` → `location.predictor`, not `model.json`.
 
 ```bash
-curl -X POST "<DEPLOYMENT_URL>/v1/models/<MODEL_NAME>:predict" \
+curl -X POST "<DEPLOYMENT_BASE_URL>/v1/models/<MODEL_NAME>:predict" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <YOUR_TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -d '{
     "instances": [
-      { "bedrooms": [3], "sqft": [1200.0], "location": ["urban"] },
-      { "bedrooms": [2], "sqft": [900.0], "location": ["suburban"] }
+      { "bedrooms": ["<integer>"], "sqft": ["<number>"], "location": ["<string>"] }
     ]
   }'
 ```
 
-Alternatively, v1 accepts a list of positional rows (feature order = `inference.input_data_schema` / `predictor.features()`), as in the KServe AutoGluon e2e fixtures.
-
-**REST v2** — one input tensor per feature, names/datatypes/order aligned with `inference.input_data_schema` (batch size 2 in this example):
+v1 also accepts positional rows (order = `instances.fields`). **REST v2** (`/v2/models/<MODEL_NAME>/infer`) uses OIP names on the wire:
 
 ```json
 {
   "inputs": [
-    { "name": "bedrooms", "shape": [2], "datatype": "INT64", "data": [3, 2] },
-    { "name": "sqft", "shape": [2], "datatype": "FP64", "data": [1200.0, 900.0] },
-    { "name": "location", "shape": [2], "datatype": "BYTES", "data": ["urban", "suburban"] }
+    { "name": "bedrooms", "shape": [1], "datatype": "INT64", "data": ["<integer>"] },
+    { "name": "sqft", "shape": [1], "datatype": "FP64", "data": ["<number>"] },
+    { "name": "location", "shape": [1], "datatype": "BYTES", "data": ["<string>"] }
   ]
 }
 ```
 
-**Notes:**
-
-- Tabular `inference.input_data_schema` is a **list** of `{name, datatype, shape}`. Time-series uses an **object** under the same path (see below) — do **not** wrap time-series values in one-element lists.
-- Classification may return labels by default, or class probabilities when the runtime has `PREDICT_PROBA=true` (see AutoGluon server docs).
-- `storageUri` for KServe must point at the `clone_for_deployment` **`predictor/`** directory referenced by `location.predictor`, not at `model.json` itself.
+Classification returns labels by default, or probabilities when `PREDICT_PROBA=true`.
 
 ### Example: `curves.json` (binary classification)
 
@@ -424,20 +415,20 @@ Per-class baselines shown as horizontal lines at respective precision values
 | `predictor/` | Saved **`TimeSeriesPredictor`**. |
 | `predictor/predictor_metadata.json` | Model id, **`prediction_length`**, **`eval_metric`**, **`target`**, **`id_column`**, **`timestamp_column`**. |
 | `notebooks/automl_predictor_notebook.ipynb` | **`timeseries_notebook.ipynb`** template with run / pipeline / model / sample / column placeholders. |
-| `model.json` | **`name`**, **`location`**, **`metrics.test_data`**, **`inference.input_data_schema`** (long-format column contract for KServe AutoGluon TS scoring). Optional **`location.back_testing`**. See [Example: `model.json` (time series)](#example-modeljson-time-series). |
+| `model.json` | Same core fields as tabular **`inference`**; optional **`location.back_testing`**. See [Example: `model.json` (time series)](#example-modeljson-time-series). |
 
 **No** `feature_importance.json`, `confusion_matrix.json`, or `curves.json` for time-series.
 
 ### Example: `model.json` (time series)
 
-Written by **`autogluon_timeseries_models_training`** under each `{model_name}_FULL/` directory. Same core fields as tabular (`name`, `location`, `metrics.test_data`, `inference`), plus optional `location.back_testing`. Time-series **`inference.input_data_schema`** is an object (not a feature-tensor list).
+Written by **`autogluon_timeseries_models_training`** under each `{model_name}_FULL/`. Same core fields as tabular, plus optional `location.back_testing`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | **`name`** | `str` | Refitted model id with `_FULL` suffix (e.g. `"DeepAR_FULL"`). |
-| **`location`** | `dict` | Relative paths: `model_directory`, `predictor`, `notebook`, `metrics`; plus **`back_testing`** when `metrics/back_testing.json` exists. |
-| **`metrics.test_data`** | `dict` | Metric name → value from time-series **`evaluate`** on held-out test data (same scores as `metrics/metrics.json`; non-finite stripped). |
-| **`inference`** | `dict` | Deploy / scoring contract. Contains **`input_data_schema`** — see [`inference.input_data_schema` (time-series KServe scoring)](#inferenceinput_data_schema-time-series-kserve-scoring). |
+| **`location`** | `dict` | `model_directory`, `predictor`, `notebook`, `metrics`; **`back_testing`** when `metrics/back_testing.json` exists. |
+| **`metrics.test_data`** | `dict` | Same scores as `metrics/metrics.json` (non-finite stripped). |
+| **`inference`** | `dict` | **`input_data_schema`** + optional **`sample_payload`** — see [time-series KServe scoring](#inferenceinput_data_schema-time-series-kserve-scoring). |
 
 ```json
 {
@@ -461,83 +452,75 @@ Written by **`autogluon_timeseries_models_training`** under each `{model_name}_F
   "inference": {
     "input_data_schema": {
       "protocol": "v1_json",
-      "id_column": "product_id",
-      "timestamp_column": "date",
-      "target": "sales",
       "prediction_length": 7,
-      "known_covariates_names": ["promo"],
-      "instances_columns": [
-        { "name": "product_id", "role": "id", "datatype": "BYTES" },
-        { "name": "date", "role": "timestamp", "datatype": "BYTES" },
-        { "name": "sales", "role": "target", "datatype": "FP64" }
+      "instances": {
+        "required": true,
+        "fields": [
+          { "name": "product_id", "datatype": "string", "role": "id", "required": true },
+          { "name": "date", "datatype": "string", "role": "timestamp", "required": true },
+          { "name": "sales", "datatype": "number", "role": "target", "required": true }
+        ]
+      },
+      "known_covariates": {
+        "required": true,
+        "fields": [
+          { "name": "product_id", "datatype": "string", "role": "id", "required": true },
+          { "name": "date", "datatype": "string", "role": "timestamp", "required": true },
+          { "name": "promo", "datatype": "integer", "role": "known_covariate", "required": true }
+        ]
+      }
+    },
+    "sample_payload": {
+      "instances": [
+        {
+          "product_id": "<string>",
+          "date": "<string>",
+          "sales": "<number>"
+        }
       ],
-      "known_covariates_columns": [
-        { "name": "product_id", "role": "id", "datatype": "BYTES" },
-        { "name": "date", "role": "timestamp", "datatype": "BYTES" },
-        { "name": "promo", "role": "known_covariate", "datatype": "INT64" }
+      "known_covariates": [
+        {
+          "product_id": "<string>",
+          "date": "<string>",
+          "promo": "<integer>"
+        }
       ]
     }
   }
 }
 ```
 
-If backtesting was skipped or failed for that model, **`location.back_testing` is omitted**; `metrics/back_testing.json` may also be absent. When the model has no known covariates, `known_covariates_names` is `[]` and `known_covariates_columns` lists only id + timestamp (or may be omitted).
+Omit `location.back_testing` (and often `metrics/back_testing.json`) when backtesting was skipped or failed. Omit `known_covariates` from schema and `sample_payload` when the model was not trained with them.
 
 ### `inference.input_data_schema` (time-series KServe scoring)
 
-Time-series uses **REST v1 JSON only** (`POST /v1/models/{name}:predict`). v2 tensor payloads are not supported. `inference.input_data_schema` on time-series `model.json` is an **object** (not a feature-tensor list) so clients can build long-format `instances` / `known_covariates` without loading AutoGluon.
-
-**Source:**
-
-| Source | Role |
-|--------|------|
-| `TimeSeriesPredictor.target` | Target column name in history rows |
-| `TimeSeriesPredictor.prediction_length` | Forecast horizon (steps of `known_covariates` per series when required) |
-| `TimeSeriesPredictor.known_covariates_names` | Covariate columns required on the horizon |
-| `predictor_metadata.json` / training params | `id_column`, `timestamp_column` (overridable at serve time via `AUTOGLUON_TS_ID_COLUMN` / `AUTOGLUON_TS_TIMESTAMP_COLUMN`) |
-
-**Schema fields:**
+Same `required` / `fields` envelope as [tabular](#inferenceinput_data_schema-tabular-kserve-scoring), but **v1 only** (no v2 tensors). Values are bare scalars (not one-element lists). Built from `TimeSeriesPredictor` (`target`, `prediction_length`, `known_covariates_names`) and id/timestamp names from `predictor_metadata.json` / training params (overridable via `AUTOGLUON_TS_ID_COLUMN` / `AUTOGLUON_TS_TIMESTAMP_COLUMN`).
 
 | Field | Type | Description |
 |-------|------|-------------|
-| **`protocol`** | `str` | Always `"v1_json"` for TS AutoGluon ServingRuntime |
-| **`id_column`** | `str` | Series id column name in request JSON |
-| **`timestamp_column`** | `str` | Timestamp column name in request JSON |
-| **`target`** | `str` | Target / observed value column in **`instances`** history |
-| **`prediction_length`** | `int` | Horizon length; when known covariates are used, supply that many future rows per series |
-| **`known_covariates_names`** | `list[str]` | Known covariate feature names (empty if none) |
-| **`instances_columns`** | `list[dict]` | Columns required in each `instances[]` row: id, timestamp, target (+ any history covariates if trained with them) |
-| **`known_covariates_columns`** | `list[dict]` | Columns required in each `known_covariates[]` row when `known_covariates_names` is non-empty: id, timestamp, + each known covariate |
+| **`protocol`** | `str` | `"v1_json"` |
+| **`prediction_length`** | `int` | Horizon — **not** in the request body; sizes future `known_covariates` rows per series |
+| **`instances`** | `object` | Always `required: true` — history rows |
+| **`known_covariates`** | `object` | Present with `required: true` only if trained with known covariates |
 
-**Column object:** `{ "name", "role", "datatype" }` where `role` is `id` | `timestamp` | `target` | `known_covariate` | `covariate`, and `datatype` uses the same KServe v2-style labels as tabular (`INT64`, `FP64`, `BOOL`, `BYTES`) for client hints — the wire format is still JSON scalars.
+Each **`fields[]`** entry: `name`, `datatype` (`integer` \| `number` \| `string` \| `boolean` — same as tabular), `role`, `required`. Roles: history needs `id` + `timestamp` + `target`; known-covariate rows need `id` + `timestamp` + each `known_covariate` (optional `covariate` for other columns).
 
-**Using the schema to score**
-
-Unlike tabular v1, the server builds history with `pd.DataFrame(instances)` over the **whole list**. Values are **bare scalars** — do **not** wrap them in one-element lists.
-
-| Payload field | Built from |
-|---------------|------------|
-| **`instances`** | One object per history timestamp; keys = `instances_columns[].name` |
-| **`known_covariates`** | Omit if `known_covariates_names` is empty; else one object per horizon step × series; keys = `known_covariates_columns[].name` |
+**Scoring:** use `sample_payload` (replace tokens) or emit `required` keys; include `prediction_length` future covariate rows when that block is required. `storageUri` → `location.predictor`. Response: `{"predictions": [...]}` with id/timestamp fields plus `mean` / quantiles.
 
 ```bash
-curl -X POST "<DEPLOYMENT_URL>/v1/models/<MODEL_NAME>:predict" \
+curl -X POST "<DEPLOYMENT_BASE_URL>/v1/models/<MODEL_NAME>:predict" \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <YOUR_TOKEN>" \
+  -H "Authorization: Bearer <TOKEN>" \
   -d '{
     "instances": [
-      { "product_id": "A", "date": "2024-01-01T00:00:00", "sales": 12.3 },
-      { "product_id": "A", "date": "2024-01-02T00:00:00", "sales": 11.1 }
+      { "product_id": "<string>", "date": "<string>", "sales": "<number>" }
     ],
     "known_covariates": [
-      { "product_id": "A", "date": "2024-01-03T00:00:00", "promo": 1 }
+      { "product_id": "<string>", "date": "<string>", "promo": "<integer>" }
     ]
   }'
 ```
 
-Response is `{"predictions": [ ... ]}` with the same id/timestamp column names plus `mean` and quantile columns from the predictor.
-
-`storageUri` must point at the saved **`predictor/`** directory (`location.predictor`). After deploy, the runtime also reads `predictor_metadata.json` / the loaded predictor; `inference.input_data_schema` is the offline contract for UI and notebooks.
 
 ### Example: `back_testing.json` (time series)
 
