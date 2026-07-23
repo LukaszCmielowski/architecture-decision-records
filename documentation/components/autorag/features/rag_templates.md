@@ -25,6 +25,10 @@ A **RAG template** is the reusable workflow blueprint AutoRAG / ai4rag parameter
     - [Value of LightRAG vs Neo4j GraphRAG](#value-of-lightrag-vs-neo4j-graphrag)
     - [Decision sketch](#decision-sketch)
   - [Optimization parameters by template](#optimization-parameters-by-template)
+- [RAG application deployment](#rag-application-deployment)
+  - [Current: starter-kit deployment](#current-starter-kit-deployment)
+  - [Future: OpenShift-native deployment](#future-openshift-native-deployment)
+  - [Template-to-deployment mapping](#template-to-deployment-mapping)
 - [Related](#related)
 
 ---
@@ -114,6 +118,28 @@ documents → text_extraction (Docling)
 
 The extraction LLM runs **once during indexing** (same as Docling parsing), not per query. Enriched chunks flow through the existing `file_search` + generation inference path — no new `inference.responses_template` is needed.
 
+
+TODO: which LLM if more than 1 ---> simple metric to select one 
+TODO: param to include or NOT (to be used as extra) --> chunker: 
+
+```
+chunk_enrichment: {
+   "relationships": {
+      "enable": "true",
+      "include": true,
+      "model_id": "llama_3_1_70B"
+   },
+   "structure": {
+      "enable": "true",
+      "include": "true"
+   },
+   "contextual": {
+      "enable": "true",
+      "include": true,
+      "model_id": "llama_3_1_70B"
+   }
+}
+```
 ### Enrichment strategies
 
 Two strategies can be explored independently or combined:
@@ -464,6 +490,78 @@ Neo4j GraphRAG: retriever_type ∈ {hybrid_cypher, vector_cypher}  ×  top_k  ×
 
 Start Graph RAG with **fixed** `mode=mix` or `retriever_type=hybrid_cypher` for smoke tests; turn on GAM once reconnect + leaderboard work.
 
+---
+
+## RAG application deployment
+
+Once a RAG pattern is optimized and the index is built, the pattern must be served behind a **production inference endpoint**. Today this uses the **agentic-starter-kit** deployment model; future work will extend this to OpenShift-native deployment.
+
+### Current: starter-kit deployment
+
+The [`agentic-starter-kits`](https://github.com/red-hat-data-services/agentic-starter-kits) repository provides a LangGraph-based [Agentic RAG template](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) that wraps retrieval and generation into a deployable agent application.
+
+```text
+Optimized pattern (pattern.json)
+   │
+   ├── settings (chunking, embedding, retrieval, generation)
+   │
+   ├── inference.responses_template ──────────► OGX POST /v1/responses
+   │     (simple RAG: file_search + generation)     (platform API — existing)
+   │
+   └── Agentic RAG starter-kit ──────────────► Deployed agent application
+         (LangGraph orchestration)                  (container on OpenShift)
+```
+
+The starter-kit agent is a **LangGraph** application that:
+
+| Concern | Detail |
+|---------|--------|
+| **Orchestration** | LangGraph graph: route query → retrieve → generate → respond |
+| **Retrieval** | Vector store via OGX (`file_search` / `vector_io`) — Milvus (local) or pgvector (OpenShift) |
+| **Generation** | LLM via OGX (`BASE_URL`, `MODEL_ID`) — same model from the pattern's `generation.model_id` |
+| **API** | `POST /chat/completions` (streaming / non-streaming), `GET /health` |
+| **Configuration** | Environment variables sourced from `pattern.json` settings: `MODEL_ID`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `VECTOR_STORE_ID`, `VECTOR_STORE_PROVIDER` |
+| **Deployment** | Helm chart → OpenShift (`make deploy`); local dev via `make run-app` |
+| **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) aligned with AutoML/AutoRAG tracking model |
+
+**Pattern → starter-kit wiring:** the pattern's `settings` and `inference` blocks provide the configuration values the starter-kit consumes via environment variables. Today this wiring is manual (copy values to `.env` or `values.yaml`); the goal is to automate it so that selecting a pattern in the Dashboard pre-fills the deployment form.
+
+| Pattern field | Starter-kit env var |
+|---------------|---------------------|
+| `settings.generation.model_id` | `MODEL_ID` |
+| `settings.embedding.model_id` | `EMBEDDING_MODEL` |
+| `settings.embedding.embedding_params.embedding_dimension` | `EMBEDDING_DIMENSION` |
+| `settings.vector_store_binding.vector_store_id` | `VECTOR_STORE_ID` |
+| `settings.vector_store_binding.provider_type` | `VECTOR_STORE_PROVIDER` |
+| `settings.retrieval.number_of_chunks` | (agent config / retriever `top_k`) |
+
+### Future: OpenShift-native deployment
+
+The starter-kit model serves as the initial deployment path. Future work will extend this to **OpenShift-native deployment** where optimized RAG patterns are deployed as first-class platform workloads:
+
+| Phase | Deployment model | Status |
+|-------|------------------|--------|
+| **Current** | Starter-kit: manual pattern → `.env` → `make deploy` / Helm chart | Available |
+| **Next** | Dashboard-driven: select pattern → auto-populate deployment form → deploy agent | Planned |
+| **Future** | OpenShift-native: pattern-driven operator or pipeline that provisions the agent, vector store binding, and route as managed resources | Future |
+
+Key capabilities to add:
+- **Automated pattern-to-deployment wiring** — Dashboard reads `pattern.json`, pre-fills deployment config
+- **Graph RAG agent templates** — LangGraph agents that use LightRAG query modes or Neo4j Cypher retrievers instead of simple `file_search`
+- **Scaling and lifecycle** — horizontal pod autoscaling, health probes, rolling updates tied to re-indexed patterns
+
+### Template-to-deployment mapping
+
+Each RAG template produces a pattern with a different inference contract. The deployment mechanism must match:
+
+| Template | Inference contract | Starter-kit path | Notes |
+|----------|-------------------|-------------------|-------|
+| **Simple RAG** | `inference.responses_template` → OGX `POST /v1/responses` with `file_search` | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) template | Shipping today |
+| **Enriched RAG** | Same as simple RAG (enrichment is in the indexed chunks, transparent at query time) | Same `agentic_rag` template | No agent-side changes needed |
+| **LightRAG core** | LightRAG query API (`mode`, `top_k`) → graph + vector context → generate | New starter-kit template or `agentic_rag` extended with LightRAG retriever | Requires LightRAG client in agent, Neo4j + Postgres connectivity |
+| **Neo4j GraphRAG** | Neo4j retriever (`HybridCypherRetriever`, etc.) → `GraphRAG.search` → answer | New starter-kit template with `neo4j-graphrag` retrievers + LangGraph orchestration | Requires Neo4j connectivity; LangGraph orchestration natural fit |
+
+**Simple and Enriched RAG** use the existing `agentic_rag` starter-kit unchanged — the `inference.responses_template` and OGX `file_search` contract are the same. **Graph RAG templates** require new agent templates that replace `file_search` with graph-native retrieval (LightRAG query modes or Neo4j Cypher retrievers).
 
 ---
 
@@ -478,3 +576,5 @@ Start Graph RAG with **fixed** `mode=mix` or `retriever_type=hybrid_cypher` for 
 - [neo4j-graphrag — User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)
 - [neo4j-graphrag — KG Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)
 - Optional orchestration: [LangGraph + Neo4j](https://neo4j.com/blog/developer/neo4j-graphrag-workflow-langchain-langgraph/)
+- [Agentic starter-kits](https://github.com/red-hat-data-services/agentic-starter-kits) — deployment templates for RAG agents
+- [Agentic RAG template](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) — LangGraph-based RAG agent (current deployment path)
