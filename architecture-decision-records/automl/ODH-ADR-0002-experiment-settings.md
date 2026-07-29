@@ -29,7 +29,7 @@ Dashboard and API integrations need a stable contract for how AutoML runs are co
 
 * Per-model artifact layout and inference schema (see ODH-ADR-0003-model-insights)
 * Model Registry registration or KServe deployment as pipeline steps (post-training platform actions)
-* GPU / Chronos-heavy AutoGluon presets outside the typical CPU-only RHOAI step envelope
+
 
 ## How
 
@@ -58,6 +58,9 @@ These parameters are the public surface of `autogluon_tabular_training_pipeline`
 | `train_data_secret_name` | `str` | (required) | Kubernetes **Secret** name holding S3-compatible credentials. Expected keys: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_DEFAULT_REGION`. Mapped into the data loader task with `use_secret_as_env`. |
 | `train_data_bucket_name` | `str` | (required) | Bucket containing the training table file. |
 | `train_data_file_key` | `str` | (required) | Object key of the **CSV** file (features plus label column). |
+| `test_data_secret_name` | `Optional[str]` | `None` | Optional Kubernetes **Secret** for an **external holdout / test table**. Same key convention as `train_data_secret_name`. When set with `test_data_bucket_name` and `test_data_file_key`, the pipeline uses this file for evaluation instead of splitting test data from the training file. |
+| `test_data_bucket_name` | `Optional[str]` | `None` | Bucket containing the external test table. Required together with the other `test_data_*` parameters when external test data is used. |
+| `test_data_file_key` | `Optional[str]` | `None` | Object key of the external test **CSV** (same schema expectations as training: features plus label column). |
 | `label_column` | `str` | (required) | Name of the target / label column. |
 | `task_type` | `str` | (required) | One of `binary`, `multiclass`, or `regression`. Drives metrics and AutoGluon problem type. |
 | `top_n` | `int` | `3` | How many top models to keep after selection and **refit on the full train data**. Upstream documents a valid range **[1, 10]**. |
@@ -77,6 +80,9 @@ AutoGluon’s **[`TimeSeriesPredictor.fit`](https://auto.gluon.ai/stable/api/aut
 | `train_data_secret_name` | `str` | (required) | Kubernetes **Secret** for S3 access. Same key convention as tabular (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`, `AWS_DEFAULT_REGION`). |
 | `train_data_bucket_name` | `str` | (required) | Bucket containing the time series file. |
 | `train_data_file_key` | `str` | (required) | Object key of the dataset (**CSV or Parquet**). Rows must support building a `TimeSeriesDataFrame`: identifiers, timestamps, target; optional covariate columns as below. |
+| `test_data_secret_name` | `Optional[str]` | `None` | Optional Kubernetes **Secret** for an **external holdout / test series file**. Same key convention as `train_data_secret_name`. When set with `test_data_bucket_name` and `test_data_file_key`, the pipeline uses this file for evaluation instead of a temporal test split from the training file. |
+| `test_data_bucket_name` | `Optional[str]` | `None` | Bucket containing the external test series file. Required together with the other `test_data_*` parameters when external test data is used. |
+| `test_data_file_key` | `Optional[str]` | `None` | Object key of the external test dataset (**CSV or Parquet**); same column expectations as training (`id_column`, `timestamp_column`, `target`, optional covariates). |
 | `target` | `str` | (required) | Column with the **numeric value to forecast** (AutoGluon time series target). |
 | `id_column` | `str` | (required) | Column that identifies each series (for example `product_id`). Passed as `id_column` when constructing the time series frame; the internal frame uses `item_id`. |
 | `timestamp_column` | `str` | (required) | Column with timestamps for each observation. Passed as `timestamp_column`; internal index level is `timestamp`. |
@@ -93,22 +99,26 @@ AutoGluon’s **[`TimeSeriesPredictor.fit`](https://auto.gluon.ai/stable/api/aut
 
 AutoGluon documents many **`presets`** values for [`TabularPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.tabular.TabularPredictor.fit.html) and [`TimeSeriesPredictor.fit`](https://auto.gluon.ai/stable/api/autogluon.timeseries.TimeSeriesPredictor.fit.html). **OpenShift AI AutoML** pipeline tasks in **pipelines-components** are typically sized for **CPU-only** workers. The tables below list presets that **fit that envelope** when datasets are moderate in rows/features/series count.
 
+Each pipeline-level preset also sets the **training-data subsample size** used before model selection: **`speed`** up to **100 MB**, **`balanced`** up to **1 GB**. Larger inputs are reduced to that envelope for the selection stage. Preset also changes the **model-training** task resource requests and the AutoGluon quality tier. Top models are still **refit on the full train portion** (selection + extra splits) when the pipeline’s full-refit path runs.
+
+Resource columns below are Kubernetes **requests** on the AutoGluon models-training task; both tiers share the same **limits** (32 CPU / 64 GiB).
+
 **Same preset string does not imply the same models.** Tabular and time-series presets are defined in separate code paths (for example [`presets_configs.py` (tabular)](https://github.com/autogluon/autogluon/blob/stable/tabular/src/autogluon/tabular/configs/presets_configs.py) vs [`predictor_presets.py` (time series)](https://github.com/autogluon/autogluon/blob/stable/timeseries/src/autogluon/timeseries/configs/predictor_presets.py)); the per-mode tables below summarize only the subset recommended for typical constrained RHOAI steps, aligned with the stable API docs linked in the section intro.
 
 ### Tabular (`TabularPredictor.fit`)
 
-| Preset | Min resources (model training step) | Role (summary) |
-|--------|--------------------------------------|----------------|
-| `speed` | 8 vCPU / 32 GiB RAM | Good accuracy/speed trade-off (45-min time limit). Uses a **`light`** hyperparameter portfolio. |
-| `balanced` | 16 vCPU / 64 GiB RAM | Stronger accuracy at higher resource cost (90-min time limit). Uses a **`zeroshot`** hyperparameter portfolio with a larger model candidate set and longer training. |
+| Preset | Training task requests | Data subsample | Role (summary) |
+|--------|------------------------|----------------|----------------|
+| `speed` | **4** vCPU / **16 GiB** | Up to **100 MB** | Good accuracy/speed trade-off (45-min time limit). Uses a **`light`** hyperparameter portfolio. |
+| `balanced` | **8** vCPU / **32 GiB** | Up to **1 GB** | Stronger accuracy at higher resource cost (may run more than 2× longer). Uses a **`zeroshot`** hyperparameter portfolio with a larger model candidate set and longer training. |
 
 
 ### Time series (`TimeSeriesPredictor.fit`)
 
-| Preset | Min resources (model training step) | Role (summary) |
-|--------|--------------------------------------|----------------|
-| `speed` | 4 vCPU / 16 GiB | Fastest training path: simpler statistical and tree/ML models. |
-| `balanced` | 8 vCPU / 32 GiB | Stronger models at higher resource cost: adds more complex models on top of `speed` models. The pipeline **excludes all Chronos-type models** from training under this preset to reduce resource consumption. |
+| Preset | Training task requests | Data subsample | Role (summary) |
+|--------|------------------------|----------------|----------------|
+| `speed` | **4** vCPU / **16 GiB** | Up to **100 MB** | Fastest training path: simpler statistical and tree/ML models. |
+| `balanced` | **8** vCPU / **32 GiB** | Up to **1 GB** | Stronger models at higher resource cost: adds more complex models on top of `speed` models. **Chronos-2** foundation model is supported under `balanced`. |
 
 
 > **Tabular vs time series:** The pipeline preset names (`speed`, `balanced`) are shared across modes, but each mode maps them to different underlying AutoGluon presets. The model sets and resource requirements therefore differ between tabular and time-series runs even for the same tier name. See [`presets_configs.py` (tabular)](https://github.com/autogluon/autogluon/blob/stable/tabular/src/autogluon/tabular/configs/presets_configs.py) and [`predictor_presets.py` (time series)](https://github.com/autogluon/autogluon/blob/stable/timeseries/src/autogluon/timeseries/configs/predictor_presets.py) for the full AutoGluon preset definitions.
