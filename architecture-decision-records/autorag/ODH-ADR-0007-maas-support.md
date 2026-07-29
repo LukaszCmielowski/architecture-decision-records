@@ -8,7 +8,7 @@
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) |
+| Tickets        | [RHAISTRAT-2440](https://redhat.atlassian.net/browse/RHAISTRAT-2440) · [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) |
 | Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
 
 ## What

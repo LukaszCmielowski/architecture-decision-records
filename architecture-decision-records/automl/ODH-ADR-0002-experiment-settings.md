@@ -8,7 +8,7 @@
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | TBD |
+| Tickets        | [RHAISTRAT-1492](https://redhat.atlassian.net/browse/RHAISTRAT-1492) |
 | Other docs:    | [ODH-ADR-0001-automl](./ODH-ADR-0001-automl.md) |
 
 ## What
