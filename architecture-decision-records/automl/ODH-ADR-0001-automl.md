@@ -4,11 +4,11 @@
 | -------------- | ---------- |
 | Date           | 2026-07-20 |
 | Scope          | AutoML Component |
-| Status         | Proposed |
+| Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | TBD |
+| Tickets        | [RHAISTRAT-1066](https://redhat.atlassian.net/browse/RHAISTRAT-1066) |
 | Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-model-insights.md) |
 
 ## What
