@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | TBD |
-| Other docs:    | [AutoRAG feature documentation](../../documentation/components/autorag/features/) — pipeline parameters, pattern schema, evaluation, MLflow, inference |
+| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md) |
 
 ## What
 
@@ -61,11 +61,11 @@ AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **doc
 | **ai4rag** | Search-space exploration, GAM-based configuration selection, pattern assembly, benchmark evaluation |
 | **Document extraction** | Structured extraction from source documents (Docling) |
 | **Platform inference abstraction** | LLM inference, embeddings, and vector I/O (today: OGX) |
-| **Vector store** | Persistent document embeddings via pluggable adapters; supported backends are documented in [experiment settings](../../documentation/components/autorag/features/experiment_settings.md) and evolve without ADR changes |
+| **Vector store** | Persistent document embeddings via pluggable adapters; supported backends are documented in [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) and evolve without changing this parent ADR |
 | **MLflow** | Optional experiment tracking, metrics, and tracing when enabled at the project level |
 | **RHOAI Connections** | Secure, namespace-scoped credentials for data sources and platform endpoints |
 
-Operational detail for each layer (parameter names, search-space dimensions, metric backends) lives in the [feature documentation](../../documentation/components/autorag/features/).
+Operational detail for each layer (parameter names, search-space dimensions, metric backends) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0006).
 
 ### Lifecycle Phases
 
@@ -110,7 +110,7 @@ flowchart LR
 
 ### Pipeline Inputs (categories)
 
-The pipeline surface is defined in [experiment settings](../../documentation/components/autorag/features/experiment_settings.md). At the architectural level, inputs fall into:
+The pipeline surface is defined in [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md). At the architectural level, inputs fall into:
 
 | Category | Purpose |
 | -------- | ------- |
@@ -133,7 +133,7 @@ Each optimization run produces run-level and per-pattern artifacts. Per-pattern 
 | **Run output** | Per run | Execution status and logs |
 | **Experiment summary** | Per run | Data prep, search space, leaderboard, links to patterns |
 
-Schema, field definitions, and examples: [RAG pattern inference](../../documentation/components/autorag/features/rag_pattern_inference.md), [RAG pattern evaluation](../../documentation/components/autorag/features/rag_pattern_evaluation.md).
+Schema, field definitions, and examples: [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md), [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md).
 
 📝 **Note:** Indexing may be executed via managed pipeline or notebook workflows; both are parameterized from the pattern record.
 
@@ -147,12 +147,12 @@ Architectural boundaries for the current Tech Preview release:
 | **Languages** | English-primary (language handling may evolve in prompts and detection) |
 | **Document types** | PDF, DOCX, PPTX, Markdown, HTML, plain text |
 | **Data sources** | S3-compatible storage, local filesystem |
-| **Search space** | Chunking, embedding, retrieval, and generation dimensions (see feature docs) |
-| **Evaluation** | Standardized metrics on user benchmark data with selectable optimization objective |
+| **Search space** | Chunking, embedding, retrieval, and generation dimensions (see [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md), [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)) |
+| **Evaluation** | Standardized metrics on user benchmark data with selectable optimization objective ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)) |
 | **Observability** | Optional MLflow tracking aligned with the AutoML parent/child run model |
 | **Interfaces** | Programmatic API and RHOAI Dashboard UI |
 
-Specific parameter names, presets, retrieval modes, and metric backends are **not** fixed in this ADR — see [feature documentation](../../documentation/components/autorag/features/).
+Specific parameter names, presets, retrieval modes, and metric backends are detailed in sibling ADRs rather than this parent overview.
 
 ### Future Enhancements
 
@@ -207,10 +207,13 @@ Specific parameter names, presets, retrieval modes, and metric backends are **no
 * [ai4rag GitHub Repository](https://github.com/IBM/ai4rag)
 * [Kubeflow Pipelines Components](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/autorag)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
-* [AutoRAG feature documentation](../../documentation/components/autorag/features/)
-  * [Experiment settings](../../documentation/components/autorag/features/experiment_settings.md)
-  * [RAG pattern inference](../../documentation/components/autorag/features/rag_pattern_inference.md)
-  * [RAG pattern evaluation](../../documentation/components/autorag/features/rag_pattern_evaluation.md)
+* AutoRAG sibling ADRs:
+  * [ODH-ADR-0002 — Optimization settings](./ODH-ADR-0002-experiment-settings.md)
+  * [ODH-ADR-0003 — RAG templates](./ODH-ADR-0003-rag-templates.md)
+  * [ODH-ADR-0004 — Pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
+  * [ODH-ADR-0005 — Pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
+  * [ODH-ADR-0006 — Prompt tuning](./ODH-ADR-0006-prompt-tuning.md)
+* [AutoRAG component index](../../documentation/components/autorag/README.md)
 
 ## Reviews
 

@@ -1,6 +1,39 @@
-# AutoRAG optimization settings
+# Open Data Hub - AutoRAG Optimization Settings
 
-Pipeline parameters, presets, and the **chunking / retrieval** search space for **`documents_rag_optimization_pipeline`** ([pipelines-components](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)). ADR context: [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md).
+|                |            |
+| -------------- | ---------- |
+| Date           | 2026-07-29 |
+| Scope          | AutoRAG Component |
+| Status         | Proposed |
+| Authors        | Lukasz Cmielowski |
+| Supersedes     | N/A |
+| Superseded by: | N/A |
+| Tickets        | TBD |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
+
+## What
+
+This ADR documents the AutoRAG documents RAG optimization pipeline public parameters, quality presets, and the chunking / retrieval search-space dimensions explored by ai4rag during GAM optimization.
+
+## Why
+
+Pipeline operators and Dashboard integrations need a stable contract for how optimization runs are configured (data sources, models, presets) and which chunking and retrieval knobs form the searchable configuration space. Capturing this as an ADR keeps the contract versioned alongside the AutoRAG architecture.
+
+## Goals
+
+* Define the public parameter surface of documents_rag_optimization_pipeline
+* Document speed and balanced presets (resources, Docling behavior, chunking envelope)
+* Specify chunking methods (recursive, hybrid) and retrieval modes (vector, keyword, hybrid) used in the search space
+
+## Non-Goals
+
+* RAG template composition beyond the current simple-RAG search space (see ODH-ADR-0003)
+* pattern.json inference / indexing export schema (see ODH-ADR-0004)
+* Evaluation metric backends and judge selection (see ODH-ADR-0005)
+
+## How
+
+Pipeline parameters, presets, and the **chunking / retrieval** search space for **`documents_rag_optimization_pipeline`** ([pipelines-components](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)). ADR context: [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md).
 
 ## Table of contents
 
@@ -143,8 +176,8 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 
 ## Related
 
-- [RAG templates](./rag_templates.md) — current simple template vs planned Graph RAG
-- [RAG pattern inference](./rag_pattern_inference.md)
-- [RAG pattern evaluation](./rag_pattern_evaluation.md)
-- [Prompt tuning](./prompt_tuning.md)
+- [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
+- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
+- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
+- [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md)
 - [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/)

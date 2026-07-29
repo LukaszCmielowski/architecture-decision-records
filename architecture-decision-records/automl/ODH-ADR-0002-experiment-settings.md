@@ -1,7 +1,40 @@
-# Experiment settings (pipeline parameters)
+# Open Data Hub - AutoML Experiment Settings
+
+|                |            |
+| -------------- | ---------- |
+| Date           | 2026-07-29 |
+| Scope          | AutoML Component |
+| Status         | Proposed |
+| Authors        | Lukasz Cmielowski |
+| Supersedes     | N/A |
+| Superseded by: | N/A |
+| Tickets        | TBD |
+| Other docs:    | [ODH-ADR-0001-automl](./ODH-ADR-0001-automl.md) |
+
+## What
+
+This ADR documents the public input parameters, quality presets, and evaluation metrics for the AutoML tabular and time-series training pipelines shipped in pipelines-components.
+
+## Why
+
+Dashboard and API integrations need a stable contract for how AutoML runs are configured (data sources, task type, presets, eval metrics) and how those map to AutoGluon TabularPredictor / TimeSeriesPredictor fits. Capturing this as an ADR keeps the contract versioned alongside the AutoML architecture.
+
+## Goals
+
+* Define the public parameter surface of autogluon_tabular_training_pipeline and autogluon_timeseries_training_pipeline
+* Document speed and balanced presets (resources and AutoGluon mapping) for tabular and time-series modes
+* Specify allowed eval_metric values and leaderboard direction conventions per task type
+
+## Non-Goals
+
+* Per-model artifact layout and inference schema (see ODH-ADR-0003-model-insights)
+* Model Registry registration or KServe deployment as pipeline steps (post-training platform actions)
+* GPU / Chronos-heavy AutoGluon presets outside the typical CPU-only RHOAI step envelope
+
+## How
 
 This page documents the **top-level input parameters** for the two AutoML training pipelines shipped in [pipelines-components](https://github.com/red-hat-data-services/pipelines-components) under `pipelines/training/automl/`.
-Higher-level architecture and ADR-level parameter groups are in [ODH-ADR-0001-automl](../../../../architecture-decision-records/automl/ODH-ADR-0001-automl.md). Component layout is summarized in the [AutoML component README](../README.md).
+Higher-level architecture and ADR-level parameter groups are in [ODH-ADR-0001-automl](./ODH-ADR-0001-automl.md). Component layout is summarized in the [AutoML component README](../../documentation/components/automl/README.md).
 
 ## Table of contents
 

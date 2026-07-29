@@ -1,4 +1,37 @@
-# Model insights (artifacts and metrics)
+# Open Data Hub - AutoML Model Insights
+
+|                |            |
+| -------------- | ---------- |
+| Date           | 2026-07-29 |
+| Scope          | AutoML Component |
+| Status         | Proposed |
+| Authors        | Lukasz Cmielowski |
+| Supersedes     | N/A |
+| Superseded by: | N/A |
+| Tickets        | TBD |
+| Other docs:    | [ODH-ADR-0001-automl](./ODH-ADR-0001-automl.md) |
+
+## What
+
+This ADR documents artifacts produced under each refitted AutoML model directory ({model_name}_FULL/): metrics, notebooks, predictors, model.json, and inference input schemas for KServe scoring for both tabular and time-series pipelines.
+
+## Why
+
+Consumers (Dashboard, Model Registry packaging, KServe clients) need a durable contract for where scores, explanations, and scoring schemas live after training. An ADR records that artifact surface alongside the AutoML architecture.
+
+## Goals
+
+* Define per-model artifact paths for tabular and time-series pipelines
+* Document model.json fields including inference.input_data_schema and sample_payload
+* Document visualization-oriented artifacts (curves.json, confusion_matrix, feature_importance, back_testing.json)
+
+## Non-Goals
+
+* Pipeline input parameters and presets (see ODH-ADR-0002-experiment-settings)
+* Automatic Model Registry registration or KServe deploy as part of the training pipeline
+* MLflow experiment layout details (tracked separately if/when documented)
+
+## How
 
 Artifacts produced under each refitted model directory (`{model_name}_FULL/`) by the AutoML training pipelines. Confirm filenames and schemas on your **pipelines-components** tag.
 

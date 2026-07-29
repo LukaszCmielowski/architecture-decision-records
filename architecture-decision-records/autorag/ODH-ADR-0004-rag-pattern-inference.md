@@ -1,4 +1,37 @@
-# RAG pattern inference
+# Open Data Hub - AutoRAG Pattern Inference
+
+|                |            |
+| -------------- | ---------- |
+| Date           | 2026-07-29 |
+| Scope          | AutoRAG Component |
+| Status         | Proposed |
+| Authors        | Lukasz Cmielowski |
+| Supersedes     | N/A |
+| Superseded by: | N/A |
+| Tickets        | TBD |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
+
+## What
+
+This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via OGX POST /v1/responses, and full-corpus index building through the managed documents indexing pipeline.
+
+## Why
+
+Optimized configurations must be portable across optimization, indexing, and inference. A durable pattern contract lets Dashboard and APIs select a winning pattern, rebuild the production index, and call the same responses surface used during benchmarking.
+
+## Goals
+
+* Define the target pattern.json schema (settings, inference, indexing, evaluation)
+* Document how inference.responses_template drives OGX POST /v1/responses
+* Document indexing.pipeline_spec for the managed documents-indexing-pipeline
+
+## Non-Goals
+
+* Metric computation and judge calibration details (see ODH-ADR-0005)
+* Graph RAG pattern storage profiles beyond sketches in ODH-ADR-0003
+* OpenShift-native operator deployment of agents (future work referenced in ODH-ADR-0003)
+
+## How
 
 This page describes **AutoRAG patterns** after optimization: the **`pattern.json`** schema, **retrieve and generation** via **`POST /v1/responses`**, and **index building** into the production vector store.
 
@@ -24,7 +57,7 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
 |----------|---------|
 | `pattern.json` | Authoritative record: `settings`, `inference`, `indexing`, `evaluation`, timing |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks for the pattern |
-| `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./rag_pattern_evaluation.md#evaluation_resultsjson)) |
+| `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson)) |
 
 ---
 
@@ -59,9 +92,9 @@ pattern.json
 | `settings` | Optimized RAG config: `vector_store_binding`, `chunking`, `embedding`, `retrieval`, `generation` (incl. `language` — benchmark language from search-space preparation, `{code, name}`) |
 | `inference.responses_template` | Frozen `POST /v1/responses` body — [Retrieve and generation](#retrieve-and-generation) |
 | `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
-| `evaluation` | `metrics[]` — per-metric `evaluator`, `name`, `scores` (`mean`, `ci_low`, `ci_high`); exactly one entry has `optimization_metric: true` (GAM objective). See [RAG pattern evaluation](./rag_pattern_evaluation.md) |
+| `evaluation` | `metrics[]` — per-metric `evaluator`, `name`, `scores` (`mean`, `ci_low`, `ci_high`); exactly one entry has `optimization_metric: true` (GAM objective). See [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) |
 
-GAM ranks patterns by the pipeline [`optimization_metric`](./experiment_settings.md) parameter (default `overall_score`). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
+GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) parameter (default `overall_score`). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
 
 ---
 
@@ -298,7 +331,7 @@ Index building populates the production vector store via the managed **`document
 
 ## Related
 
-- [RAG pattern evaluation](./rag_pattern_evaluation.md)
-- [RAG templates](./rag_templates.md) — current simple template vs planned Graph RAG
-- [AutoRAG optimization settings](./experiment_settings.md) — pipeline parameters, presets, chunking, retrieval
-- [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
+- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
+- [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
+- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, presets, chunking, retrieval
+- [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)

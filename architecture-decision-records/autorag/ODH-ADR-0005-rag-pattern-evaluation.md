@@ -1,14 +1,37 @@
-# RAG pattern evaluation
+# Open Data Hub - AutoRAG Pattern Evaluation
 
-## Table of contents
+|                |            |
+| -------------- | ---------- |
+| Date           | 2026-07-29 |
+| Scope          | AutoRAG Component |
+| Status         | Proposed |
+| Authors        | Lukasz Cmielowski |
+| Supersedes     | N/A |
+| Superseded by: | N/A |
+| Tickets        | TBD |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
 
-- [Overview](#overview)
-- [Judge model](#judge-model)
-- [Artifacts](#artifacts)
-- [evaluation_results.json](#evaluation_resultsjson)
-- [Related](#related)
+## What
 
----
+This ADR documents how AutoRAG / ai4rag scores RAG patterns during rag_templates_optimization: metric backends, judge-model selection, aggregates in pattern.json, and row-level evaluation_results.json.
+
+## Why
+
+Comparable, standardized metrics are required for GAM ranking and for users to trust pattern selection. The evaluation contract (metrics, judge calibration, artifacts) must be explicit so pipeline parameters and Dashboard leaderboards stay aligned.
+
+## Goals
+
+* Define the metric set and evaluator backends used every optimization run
+* Document judge model auto-selection and calibration for answer_relevance
+* Specify evaluation aggregates in pattern.json and per-row evaluation_results.json
+
+## Non-Goals
+
+* Search-space dimensions and pipeline parameters (see ODH-ADR-0002)
+* Optional DSPy prompt pre-optimization (see ODH-ADR-0006)
+* External evaluation frameworks beyond ai4rag's internal unitxt/judge/custom backends
+
+## How
 
 ## Overview
 
@@ -54,7 +77,7 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## Artifacts
 
-`pattern.json` → **`evaluation`** holds run-level aggregates in **`metrics[]`**. Field reference below; full `pattern.json` example in [RAG pattern inference](./rag_pattern_inference.md#example-patternjson).
+`pattern.json` → **`evaluation`** holds run-level aggregates in **`metrics[]`**. Field reference below; full `pattern.json` example in [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md#example-patternjson).
 
 | Field | Description |
 |-------|-------------|
@@ -125,9 +148,9 @@ KFP **`evaluation_results.json`** is the source of truth for row-level scores an
 
 ## Related
 
-- [RAG pattern inference](./rag_pattern_inference.md) — full `pattern.json` schema and artifact layout
-- [RAG templates](./rag_templates.md) — current simple template vs planned Graph RAG
-- [AutoRAG optimization settings](./experiment_settings.md) — `optimization_metric` pipeline parameter
-- [Prompt tuning](./prompt_tuning.md) — optional DSPy prompt pre-optimization before GAM
-- [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
+- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — full `pattern.json` schema and artifact layout
+- [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
+- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — `optimization_metric` pipeline parameter
+- [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md) — optional DSPy prompt pre-optimization before GAM
+- [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [ai4rag evaluation guide](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)

@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | TBD |
-| Other docs:    | [AutoML feature documentation](../../documentation/components/automl/) |
+| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-model-insights.md) |
 
 ## What
 
@@ -268,6 +268,10 @@ Status: Tech Preview
 * [AutoGluon GitHub Repository](https://github.com/autogluon/autogluon)
 * [Kubeflow Pipelines Components](https://github.com/red-hat-data-services/pipelines-components)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
+* AutoML sibling ADRs:
+  * [ODH-ADR-0002 — Experiment settings](./ODH-ADR-0002-experiment-settings.md)
+  * [ODH-ADR-0003 — Model insights](./ODH-ADR-0003-model-insights.md)
+* [AutoML component index](../../documentation/components/automl/README.md)
 
 ## Reviews
 

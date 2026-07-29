@@ -1,4 +1,38 @@
-# RAG templates
+# Open Data Hub - AutoRAG RAG Templates
+
+|                |            |
+| -------------- | ---------- |
+| Date           | 2026-07-29 |
+| Scope          | AutoRAG Component |
+| Status         | Proposed |
+| Authors        | Lukasz Cmielowski |
+| Supersedes     | N/A |
+| Superseded by: | N/A |
+| Tickets        | TBD |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
+
+## What
+
+This ADR defines AutoRAG / ai4rag RAG templates: the reusable retrieve-and-generate blueprints parameterized during optimization. It covers the shipping simple RAG template, the proposed Relationship-Enriched path, planned Graph RAG sub-templates, and pattern deployment implications.
+
+## Why
+
+Template choice determines composition (retrieve/generate), infrastructure (vector store vs graph DB), optimization knobs, and deployment contracts. An ADR records which templates ship, which are proposed, and how engines will be compared before a Graph RAG product default is chosen.
+
+## Goals
+
+* Document the current simple retrieve-then-generate template and its optimization / inference contract
+* Define Relationship-Enriched RAG as a Milvus-only path that validates relational extraction before graph infrastructure
+* Document peer Graph RAG options (LightRAG core and Neo4j GraphRAG), comparison criteria, and open engine decision
+* Describe pattern-to-deployment mapping (starter-kit today; OpenShift-native later)
+
+## Non-Goals
+
+* Selecting the final Graph RAG GA engine in this ADR (decision remains open pending leaderboard comparison)
+* Detailed pipeline parameter tables for simple-RAG presets (see ODH-ADR-0002)
+* Full pattern.json field reference (see ODH-ADR-0004)
+
+## How
 
 A **RAG template** is the reusable workflow blueprint AutoRAG / ai4rag parameterizes during optimization. GAM explores values inside a template (chunking, retrieval, generation, prompts); the template itself defines **how** retrieve and generate are composed.
 
@@ -41,7 +75,7 @@ A **RAG template** is the reusable workflow blueprint AutoRAG / ai4rag parameter
 | **Relationship-Enriched RAG** | Proposed | Simple RAG + relation-enriched chunks via LightRAG extraction | Milvus + extraction LLM (no graph DB) |
 | **Graph RAG** | Planned / future | Knowledge-graph RAG with **two peer sub-templates** (decision open): LightRAG core, or Neo4j GraphRAG (+ optional LangChain/LangGraph orchestration) | Neo4j (required); LightRAG also uses PostgreSQL for KV/vector/doc-status |
 
-Optimized instances of a template are emitted as **RAG patterns** (`pattern.json`). See [RAG pattern inference](./rag_pattern_inference.md).
+Optimized instances of a template are emitted as **RAG patterns** (`pattern.json`). See [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md).
 
 Pipeline stage: **`rag_templates_optimization`** in the documents RAG optimization managed pipeline. Template selection is expected via `rag_template_type` (`simple` | `lightrag` | `neo4j_graphrag` | `both` for comparative runs). Which Graph RAG engine becomes the product default is **not decided yet** — both paths remain in scope for evaluation on the same pipeline `test_data` / leaderboard.
 
@@ -64,15 +98,15 @@ question
 
 | Concern | Behavior |
 |---------|----------|
-| **Indexing** | Chunk → embed → write vector store ([experiment settings](./experiment_settings.md)) |
+| **Indexing** | Chunk → embed → write vector store ([experiment settings](./ODH-ADR-0002-experiment-settings.md)) |
 | **Retrieval** | One query; `number_of_chunks`, `search_mode` (`vector` / `keyword` / `hybrid`), optional ranker |
 | **Generation** | One LLM call with system / user / context templates over retrieved chunks |
 | **Inference export** | Frozen **`inference.responses_template`** for OGX `POST /v1/responses` (`file_search` + generation) |
-| **Optimization** | GAM over chunking × embedding × retrieval × generation (and optional [prompt tuning](./prompt_tuning.md) candidates) |
+| **Optimization** | GAM over chunking × embedding × retrieval × generation (and optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) candidates) |
 
 **Naming note:** ai4rag `hybrid` means dense + ranker fusion over chunks. That is **not** the same as LightRAG’s `hybrid` query mode (local + global graph — see [LightRAG core](#sub-template-lightrag-core)).
 
-What this template does **not** include today: multi-hop retrieval, tool-calling loops, entity/knowledge-graph traversal, or agent planners. Evaluation uses the metrics in [RAG pattern evaluation](./rag_pattern_evaluation.md).
+What this template does **not** include today: multi-hop retrieval, tool-calling loops, entity/knowledge-graph traversal, or agent planners. Evaluation uses the metrics in [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md).
 
 ---
 
@@ -462,11 +496,11 @@ Need multi-hop / thematic graph RAG? (Neo4j required)
 
 ### Optimization parameters by template
 
-AutoRAG / GAM should explore knobs that change **retrieval or generation quality** without exploding index-rebuild cost. Prefer a **phased** search space: fix heavy index settings first, then optimize query-time dims; widen later once baselines exist. Full simple-RAG dims: [experiment settings](./experiment_settings.md).
+AutoRAG / GAM should explore knobs that change **retrieval or generation quality** without exploding index-rebuild cost. Prefer a **phased** search space: fix heavy index settings first, then optimize query-time dims; widen later once baselines exist. Full simple-RAG dims: [experiment settings](./ODH-ADR-0002-experiment-settings.md).
 
 | Template | Optimize (high value) | Optimize later / conditional | Usually **fix** (not GAM dims) |
 |----------|----------------------|------------------------------|----------------------------------|
-| **Current (simple) RAG** | `chunking.method` / `chunk_size` / `chunk_overlap`; `include_metadata` (hybrid); `embedding_model_id`; `search_mode`; `number_of_chunks`; hybrid `ranker_*`; `generation_model_id` + gen params (temp, max tokens); optional [prompt tuning](./prompt_tuning.md) candidates | Ranker strategy variants; embedding allow-list size; prompt candidate count | `vector_io_provider_id`, Docling preset (`speed`/`balanced`), corpus / `test_data`, OGX endpoint |
+| **Current (simple) RAG** | `chunking.method` / `chunk_size` / `chunk_overlap`; `include_metadata` (hybrid); `embedding_model_id`; `search_mode`; `number_of_chunks`; hybrid `ranker_*`; `generation_model_id` + gen params (temp, max tokens); optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) candidates | Ranker strategy variants; embedding allow-list size; prompt candidate count | `vector_io_provider_id`, Docling preset (`speed`/`balanced`), corpus / `test_data`, OGX endpoint |
 | **Relationship-Enriched RAG** | Everything in simple RAG **plus** `include_relations`, `relation_filter_mode` (`none`/`boost`/`filter`), `extraction_model_id` | Combining A+B strategies; relation keyword boost weight | Same infra as simple RAG; do not treat extraction as a per-query dim |
 | **LightRAG core** | **Query-time:** `mode` (`naive`/`local`/`global`/`hybrid`/`mix`), `top_k`, `chunk_top_k`, `enable_rerank`; **gen:** `generation_model_id`, temperature (~0.1–0.3) | **Index-time (costly):** `chunk_token_size` (~800–1500), `extraction_model_id`, embedding model (locks vectors) | `storage_profile` (`ogx_pgvector_neo4j`, …), DB secrets, workspace id, `enable_llm_cache` (ops, not quality objective) |
 | **Neo4j GraphRAG** | **Query-time:** `retriever_type` (`hybrid_cypher` / `vector_cypher` / `text2cypher` / …), `top_k`, Cypher hop depth / `LIMIT`; **gen:** model + temperature | **Index-time:** `GraphSchema` strictness / entity types; embedding model; full-text vs vector index params | `storage_profile: neo4j_hybrid_only`, Neo4j secret, LangGraph on/off (orchestration, not core RAG score) |
@@ -567,11 +601,11 @@ Each RAG template produces a pattern with a different inference contract. The de
 
 ## Related
 
-- [AutoRAG optimization settings](./experiment_settings.md) — search-space dimensions for the current template
-- [Prompt tuning](./prompt_tuning.md) — optional prompt candidates injected into the current template
-- [RAG pattern inference](./rag_pattern_inference.md) — pattern artifacts and Responses export
-- [RAG pattern evaluation](./rag_pattern_evaluation.md) — benchmark metrics (`faithfulness`, `answer_correctness`, …)
-- [ODH-ADR-0001-autorag](../../../../architecture-decision-records/autorag/ODH-ADR-0001-autorag.md)
+- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — search-space dimensions for the current template
+- [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md) — optional prompt candidates injected into the current template
+- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — pattern artifacts and Responses export
+- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — benchmark metrics (`faithfulness`, `answer_correctness`, …)
+- [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [LightRAG](https://github.com/HKUDS/LightRAG) / [Programming with Core](https://github.com/HKUDS/LightRAG/blob/main/docs/ProgramingWithCore.md)
 - [neo4j-graphrag — User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)
 - [neo4j-graphrag — KG Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)
