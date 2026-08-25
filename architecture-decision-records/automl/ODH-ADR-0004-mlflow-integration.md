@@ -30,8 +30,7 @@ AutoML pipelines currently lack a unified experiment tracking, comparison, and r
 ## Non-Goals
 
 * Native AutoGluon MLflow autologging (no `mlflow.autogluon` module exists)
-* Replacing KFP environment-based logging with stage-map-based logging
-* MLflow Model Registry integration (model registration is out of scope for RHOAI 3.5)
+* MLflow Model Registry integration (model registration is out of scope for RHOAI 3.6)
 
 ## How
 
@@ -83,11 +82,9 @@ Add a top-level **`mlflow`** object when the stage map is published. Other field
   "pipeline_id": "autogluon-tabular-training-pipeline",
   "description": "Tabular AutoGluon pipeline: load and split data, train and refit models, build leaderboard.",
   "components": [ "..." ],
-  "kfp_run_id": "run-abc123-def456",
   "published_at": "2026-05-19T12:00:00Z",
   "mlflow": {
-    "tracking_enabled": true,
-    "tracking_uri": "https://mlflow-server.example.com",
+     "tracking_uri": "https://mlflow-server.example.com",
     "experiment_id": "5",
     "run_id": "a3f8b2c1d4e5f6g7h8i9j0k1l2m3n4o5",
     "workspace": "data-science-project",
@@ -96,23 +93,8 @@ Add a top-level **`mlflow`** object when the stage map is published. Other field
 }
 ```
 
-**When MLflow tracking is disabled:**
-
-```json
-{
-  "pipeline_id": "autogluon-tabular-training-pipeline",
-  "components": [ "..." ],
-  "kfp_run_id": "run-abc123-def456",
-  "published_at": "2026-05-19T12:00:00Z",
-  "mlflow": {
-    "tracking_enabled": false
-  }
-}
-```
-
 | `mlflow` field | Type | Source | Description |
 |----------------|------|--------|-------------|
-| `tracking_enabled` | bool | `bool(MLFLOW_TRACKING_URI)` | Whether MLflow tracking was active for this run |
 | `tracking_uri` | string | `MLFLOW_TRACKING_URI` | MLflow tracking server endpoint (omitted when disabled) |
 | `experiment_id` | string | `MLFLOW_EXPERIMENT_ID` | KFP-managed experiment for this pipeline |
 | `run_id` | string | `MLFLOW_RUN_ID` | KFP-managed parent run for this execution |
@@ -120,20 +102,6 @@ Add a top-level **`mlflow`** object when the stage map is published. Other field
 | `run_url` | string | Computed from `tracking_uri`, `experiment_id`, `run_id` | Deep-link to MLflow UI parent run |
 
 `publish_component_stage_map` populates the `mlflow` block from the same KFP-injected environment variables at pipeline start. No new KFP output parameter or pipeline task is required — the existing `component_stage_map` artifact remains the single dashboard join artifact. Downstream training components still resume the parent run via `MLFLOW_RUN_ID` in the pod environment; the stage map is for **discovery and deep-linking** (AutoML Dashboard, KFP UI, CI/CD).
-
-### MLflow UI examples
-
-**Experiment Runs View:**
-
-![MLflow AutoML Runs View](../assets/mlflow_automl2.png)
-
-*The MLflow UI showing the AutoML experiment with parent pipeline run and child runs for each model (WeightedEnsemble_L3, CatBoost_L1, etc.) with task-specific metrics (accuracy, f1, roc_auc) and parameters.*
-
-**Run Comparison View:**
-
-![MLflow AutoML Comparison View](../assets/mlflow_automl.png)
-
-*The parallel coordinates plot comparing 6 runs from the experiment, enabling side-by-side analysis of model performance across different metrics.*
 
 ## Alternatives
 

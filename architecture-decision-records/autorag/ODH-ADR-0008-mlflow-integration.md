@@ -17,7 +17,7 @@ Integrate MLflow experiment tracking, metrics logging, and per-benchmark tracing
 
 ## Why
 
-AutoRAG pipelines evaluate multiple RAG patterns (chunking, embedding, retrieval, generation configurations) but lack a unified way to compare patterns side-by-side, trace individual benchmark requests through retrieval/generation/evaluation stages, and reproduce past optimization runs. MLflow integration provides experiment tracking, comparison UI, and per-request tracing using the same KFP + MLflow model already established by AutoML.
+AutoRAG pipelines evaluate multiple RAG patterns (chunking, embedding, retrieval, generation configurations) but lack a unified way to compare runs side-by-side, trace individual benchmark requests through retrieval/generation/evaluation stages. MLflow integration provides experiment tracking, comparison UI, and per-request tracing using the same KFP + MLflow model already established by AutoML.
 
 ## Goals
 
@@ -30,7 +30,6 @@ AutoRAG pipelines evaluate multiple RAG patterns (chunking, embedding, retrieval
 
 * Copying `evaluation_results.json` content into MLflow (KFP remains the source of truth)
 * OTel Collector integration, `mlflow.genai.evaluate()` on traces, `log_expectation` / `log_feedback`, `mlflow.log_input()` on parent run
-* Extending `component_stage_map` (AutoRAG does not use this artifact; AutoML does)
 * MLflow Model Registry integration
 
 ## How
@@ -158,7 +157,6 @@ Enable `mlflow.openai.autolog()` at component start so OGX `responses.create` ca
 
 ## Risks
 
-* **MLflow tracing dependency on eval loop** — traces require the benchmark evaluation to run inside the child-run context, coupling MLflow integration with ai4rag's internal eval loop. *Mitigation: Use ai4rag hooks or callbacks to inject tracing without modifying core optimization logic.*
 * **Trace volume at scale** — P patterns x N benchmark rows can produce large numbers of traces (e.g., 50 patterns x 100 rows = 5,000 traces per pipeline run). *Mitigation: Monitor MLflow server capacity; consider sampling for large benchmark sets in future releases.*
 * **`mlflow>=2.22` requirement** — Responses API autolog requires a recent MLflow version that may not be available in all RHOAI deployments. *Mitigation: Lazy-import and version-check; fall back to manual generation span logging if autolog is unavailable.*
 
