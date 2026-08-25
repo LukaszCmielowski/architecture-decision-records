@@ -69,11 +69,11 @@ Each **`pattern.json`** captures optimized **settings**, **`inference`** (respon
 pattern.json
 ├── name, iteration, max_combinations, duration_seconds
 ├── settings
-│   ├── vector_store_binding
-│   ├── chunking, embedding, retrieval, generation
-│   └── generation.language (optional, {code, name})
-├── inference
-│   └── responses_template
+│   ├── vector_store_binding (provider_type, collection_name)
+│   ├── chunking (method, chunk_size, chunk_overlap, include_metadata)
+│   ├── embedding (model_id, embedding_params)
+│   ├── retrieval (method, number_of_chunks, search_mode, ranker_strategy, ranker_alpha)
+│   └── generation (model_id, temperature, max_completion_tokens, templates, language)
 ├── indexing
 │   └── pipeline_spec
 │       ├── pipeline_name
@@ -90,7 +90,6 @@ pattern.json
 |-------|-------------|
 | `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time |
 | `settings` | Optimized RAG config: `vector_store_binding`, `chunking`, `embedding`, `retrieval`, `generation` (incl. `language` — benchmark language from search-space preparation, `{code, name}`) |
-| `inference.responses_template` | Frozen `POST /v1/responses` body — [Retrieve and generation](#retrieve-and-generation) |
 | `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
 | `evaluation` | `metrics[]` — per-metric `evaluator`, `name`, `scores` (`mean`, `ci_low`, `ci_high`); exactly one entry has `optimization_metric: true` (GAM objective). See [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) |
 
@@ -102,177 +101,134 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
 
 ```json
 {
-   "name":"pattern_01",
-   "iteration":0,
-   "max_combinations":24,
-   "duration_seconds":120.5,
-   "settings":{
-      "vector_store_binding":{
-         "provider_id":"milvus-provider",
-         "provider_type":"remote::milvus",
-         "vector_store_id":"vs_coll_pattern_01"
+  "name": "Pattern1",
+  "max_combinations": 90,
+  "evaluation": {
+    "metrics": [
+      {
+        "name": "answer_correctness",
+        "evaluator": "unitxt",
+        "description": "Measures how accurately the generated answer matches the ground-truth reference answers.",
+        "scores": {
+          "mean": 0.7161,
+          "ci_low": 0.6071,
+          "ci_high": 0.8149
+        }
       },
-      "chunking":{
-         "method":"recursive",
-         "chunk_size":2048,
-         "chunk_overlap":256
+      {
+        "name": "faithfulness",
+        "evaluator": "unitxt",
+        "description": "Measures whether the generated answer is grounded in the retrieved context without hallucination.",
+        "scores": {
+          "mean": 0.9063,
+          "ci_low": 0.8806,
+          "ci_high": 0.9292
+        }
       },
-      "embedding":{
-         "model_id":"text-embedding-3-small",
-         "embedding_params":{
-            "embedding_dimension":768,
-            "context_length":2048
-         }
+      {
+        "name": "context_correctness",
+        "evaluator": "unitxt",
+        "description": "Measures whether the retrieved context passages match the ground-truth reference documents.",
+        "scores": {
+          "mean": 0.95,
+          "ci_low": 0.8,
+          "ci_high": 1.0
+        }
       },
-      "retrieval":{
-         "method":"simple",
-         "number_of_chunks":5,
-         "search_mode":"hybrid",
-         "ranker_strategy":"rrf",
-         "ranker_k":60,
-         "ranker_alpha":0.5
+      {
+        "name": "answer_relevance",
+        "evaluator": "judge",
+        "description": "LLM judge score for how directly and helpfully the response addresses the question.",
+        "scores": {
+          "mean": 0.95,
+          "ci_low": 0.85,
+          "ci_high": 1.0
+        },
+        "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic"
       },
-      "generation":{
-         "model_id":"gpt-4.1-mini",
-         "context_template_text":"{document}",
-         "user_message_text":"…",
-         "system_message_text":"…",
-         "language":{
-            "code":"ja",
-            "name":"Japanese"
-         }
+      {
+        "name": "overall_score",
+        "evaluator": "custom",
+        "description": "Aggregate score computed as the mean of all other evaluated metrics.",
+        "scores": {
+          "mean": 0.8806,
+          "ci_low": 0.7844,
+          "ci_high": 0.936
+        },
+        "optimization_metric": true
       }
-   },
-   "inference":{
-      "responses_template":{
-         "model":"gpt-4.1-mini",
-         "stream":false,
-         "store":true,
-         "input":[
-            {
-               "type":"message",
-               "role":"user",
-               "content":[
-                  {
-                     "type":"input_text",
-                     "text":"<user_query_placeholder>"
-                  }
-               ]
-            }
-         ],
-         "metadata":{
-            "autorag_run_id":"012345678",
-            "rag_pattern_name":"pattern_01"
-         },
-         "instructions":"Please answer the question using only information found in file_search results. …",
-         "tools":[
-            {
-               "type":"file_search",
-               "vector_store_ids":[
-                  "vs_coll_pattern_01"
-               ],
-               "max_num_results":5,
-               "ranking_options":{
-                  "search_mode":"hybrid",
-                  "ranker_strategy":"rrf",
-                  "ranker_k":60,
-                  "ranker_alpha":0.5
-               }
-            }
-         ],
-         "tool_choice":{
-            "type":"file_search"
-         },
-         "include":[
-            "file_search_call.results"
-         ]
+    ]
+  },
+  "duration_seconds": 48,
+  "settings": {
+    "vector_store_binding": {
+      "provider_type": "milvus",
+      "collection_name": "ai4rag_20260824161307_t2pxa4s3"
+    },
+    "chunking": {
+      "method": "hybrid",
+      "chunk_size": 512,
+      "chunk_overlap": 0,
+      "include_metadata": true
+    },
+    "embedding": {
+      "model_id": "publishers/ai-eng-cracow/models/redhataibge-m3",
+      "embedding_params": {
+        "embedding_dimension": 1024,
+        "context_length": 1015
       }
-   },
-   "indexing":{
-      "pipeline_spec":{
-         "pipeline_name":"documents-indexing-pipeline",
-         "parameters":{
-            "ogx_secret_name":"ogx-connection",
-            "vector_io_provider_id":"milvus-provider-1",
-            "vector_store_id":"coll_pattern_01",
-            "input_data_secret_name":"s3-input-connection",
-            "input_data_bucket_name":"customer-docs",
-            "input_data_key":"corpus/v1/",
-            "embedding_model_id":"nomic-embed-text-v1.5",
-            "embedding_params":{
-               "embedding_dimension":768,
-               "context_length":2048
-            },
-            "chunking_method":"recursive",
-            "chunk_size":1024,
-            "chunk_overlap":128,
-            "batch_size":20
-         },
-         "overrides_allowed":[
-            "input_data_secret_name",
-            "input_data_bucket_name",
-            "input_data_key",
-            "vector_store_id",
-            "batch_size"
-         ]
+    },
+    "retrieval": {
+      "method": "simple",
+      "number_of_chunks": 5,
+      "search_mode": "hybrid",
+      "ranker_strategy": "weighted",
+      "ranker_alpha": 0.5
+    },
+    "generation": {
+      "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic",
+      "temperature": 0.2,
+      "max_completion_tokens": 2048,
+      "context_template_text": "Document {doc_number}:\n{document}",
+      "user_message_text": "\nContext:\n{reference_documents}\n\nQuestion: {question}\nRespond exclusively in English, regardless of any other language used in the provided context. You MUST respond in English.",
+      "system_message_text": "Please answer the user's question based solely on the provided context documents. If the question cannot be answered from the provided context, say you cannot answer. Your answer should be concise.",
+      "language": {
+        "code": "en",
+        "name": "English"
       }
-   },
-   "evaluation":{
-      "metrics":[
-         {
-            "evaluator":"unitxt",
-            "name":"faithfulness",
-            "description":"Whether the generated answer is supported by the retrieved context.",
-            "scores":{
-               "mean":0.91,
-               "ci_low":0.88,
-               "ci_high":0.94
-            }
-         },
-         {
-            "evaluator":"unitxt",
-            "name":"answer_correctness",
-            "description":"How well the generated answer matches ground-truth benchmark answers.",
-            "scores":{
-               "mean":0.82,
-               "ci_low":0.78,
-               "ci_high":0.86
-            }
-         },
-         {
-            "evaluator":"unitxt",
-            "name":"context_correctness",
-            "description":"Whether retrieval returned sufficient context to answer the question.",
-            "scores":{
-               "mean":0.80,
-               "ci_low":0.70,
-               "ci_high":0.90
-            }
-         },
-         {
-            "evaluator":"judge",
-            "model_id":"gpt-4.1-mini",
-            "name":"answer_relevance",
-            "description":"Whether the generated answer addresses the benchmark question.",
-            "scores":{
-               "mean":0.91,
-               "ci_low":0.88,
-               "ci_high":0.94
-            }
-         },
-         {
-            "evaluator":"custom",
-            "name":"overall_score",
-            "optimization_metric": true,
-            "description":"Equal-weight mean of faithfulness, answer_correctness, context_correctness, and answer_relevance. GAM objective for this pattern.",
-            "scores":{
-               "mean":0.84,
-               "ci_low":0.79,
-               "ci_high":0.89
-            }
-         }
+    }
+  },
+  "iteration": 0,
+  "indexing": {
+    "pipeline_spec": {
+      "pipeline_name": "documents-indexing-pipeline",
+      "parameters": {
+        "maas_secret_name": "maas",
+        "vector_db_secret_name": "milvus",
+        "input_data_secret_name": "minio",
+        "input_data_bucket_name": "jwalaszc-bucket",
+        "input_data_key": "rh_summit_2026/documents",
+        "batch_size": 20,
+        "provider_type": "milvus",
+        "collection_name": "ai4rag_20260824161307_t2pxa4s3",
+        "embedding_model_id": "publishers/ai-eng-cracow/models/redhataibge-m3",
+        "embedding_params": {
+          "embedding_dimension": 1024,
+          "context_length": 1015
+        },
+        "chunking_method": "hybrid",
+        "chunk_size": 512,
+        "chunk_overlap": 0
+      },
+      "overrides_allowed": [
+        "input_data_secret_name",
+        "input_data_bucket_name",
+        "input_data_key",
+        "collection_name",
+        "batch_size"
       ]
-   }
+    }
+  }
 }
 ```
 
