@@ -138,7 +138,7 @@ GAM selection, `pattern.json` emission, and metric backends remain as in [ODH-AD
 
 Inference consumers continue to use `inference.responses_template` as described in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md). Studio / Playground persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)).
 
-**Studio flow:**
+### GenAI Studio flow
 
 1. Pipeline stores `pattern.json` 
 2. User selects a pattern in Studio / Dashboard
