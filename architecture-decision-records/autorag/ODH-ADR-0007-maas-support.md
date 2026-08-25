@@ -79,6 +79,27 @@ Public surface of `documents_rag_optimization_pipeline` (see also [ODH-ADR-0002]
 
 Data references (`test_data_*`, `input_data_*`) and optimization controls (`optimization_metric`, `optimization_max_rag_patterns`, `preset`) are unchanged in role. Model allow-lists apply to the MaaS catalog.
 
+**Milvus**
+```json
+{
+    "MILVUS_URI": "MILVUS_URI",
+    "MILVUS_TOKEN": "MILVUS_TOKEN",
+    "MILVUS_SERVER_CERT": "MILVUS_SERVER_CERT",
+}
+```
+
+**PGVector**
+```json
+{
+  "PGVECTOR_HOST": "PGVECTOR_HOST",
+  "PGVECTOR_PORT": "PGVECTOR_PORT",
+  "PGVECTOR_DB": "PGVECTOR_DB",
+  "PGVECTOR_USER": "PGVECTOR_USER",
+  "PGVECTOR_PASSWORD": "PGVECTOR_PASSWORD"
+}
+```
+
+
 ---
 
 ## HPO integration
