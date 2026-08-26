@@ -31,6 +31,7 @@ MaaS is the RHOAI platform surface for listing and invoking chat-capable models 
 * Use LangChain vector DB adapters for trial-time index and retrieval
 * Preserve existing retrieval search-space fields (`search_mode`, `ranker_strategy`, `ranker_k`, `ranker_alpha`, `number_of_chunks`)
 * Keep `pattern.json` as the authoritative pattern contract for indexing and inference consumers
+* Emit `agentic_template.zip` per pattern (parameterized agentic starter-kit)
 
 ## Non-Goals
 
@@ -46,7 +47,6 @@ Wire **`documents_rag_optimization_pipeline`** to three Connections: MaaS (LLM d
 
 - [MaaS role in AutoRAG](#maas-role-in-autorag)
 - [Pipeline Connections](#pipeline-connections)
-- [HPO integration](#hpo-integration)
 - [Trial execution](#trial-execution)
 - [Pattern artifacts](#pattern-artifacts)
 - [Follow-on](#follow-on)
@@ -113,18 +113,6 @@ Data references (`test_data_*`, `input_data_*`) and optimization controls (`opti
 
 ---
 
-## HPO integration
-
-1. **Discover** — Query MaaS for chat and judge models available to the namespace / project
-2. **Complete** — Run generation through MaaS OpenAI-compatible routes
-3. **Judge** — Score answers via MaaS when the evaluation path uses an LLM judge
-4. **Embed** — Call the embedding endpoint through MaaS OpenAI-compatible routes
-5. **Retrieve** — Upsert and search via LangChain adapters from `vector_db_secret_name`
-
-ai4rag talks to MaaS through the platform Connection; it does not require a separate foundation-model client for HPO chat/judge traffic.
-
----
-
 ## Trial execution
 
 ```text
@@ -145,16 +133,11 @@ GAM selection, `pattern.json` emission, and metric backends remain as in [ODH-AD
 | Artifact                    | Role                                                                          |
 |-----------------------------|-------------------------------------------------------------------------------|
 | `pattern.json`              | **Source of truth** — `settings`, `indexing`, `evaluation` |
-| `agentic_template.zip` | agentic starter kit aligned with https://github.com/red-hat-data-services/agentic-starter-kits |
+| `agentic_template.zip`      | Per-pattern zip of the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag), parameterized from `pattern.json` `settings` |
+| `evaluation_results.json`   | Per-benchmark-row scores ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)) |
+| `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks for the pattern |
 
-Inference consumers assemble MaaS chat completions from `settings.generation` and retrieve via `settings.vector_store_binding`, as described in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md). Studio / Playground persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)).
-
-### GenAI Studio flow
-
-1. Pipeline stores `pattern.json` 
-2. User selects a pattern in Studio / Dashboard
-3. Studio persists the AgentProfile (ConfigMap) and wires Playground / inference
-4. Runtime retrieve-and-generate follows the pattern’s `settings` (generation templates + vector-store binding) ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md))
+Emitted under `rag_patterns/<pattern_name>/` by `rag_templates_optimization` (see [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)). Retrieve-and-generate, including the GenAI Studio / Playground flow, is documented in [ODH-ADR-0004 — Retrieve and generation](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation).
 
 ---
 
@@ -172,11 +155,9 @@ Inference consumers assemble MaaS chat completions from `settings.generation` an
 
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) — parent AutoRAG architecture
 - [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters and search space
-- [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json` and retrieve / generate
+- [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json`, retrieve / generate, GenAI Studio flow
 - [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metrics and judge
 - [ODH-ADR-0006-prompt-tuning](./ODH-ADR-0006-prompt-tuning.md) — DSPy pre-check (shares MaaS chat/judge path)
 - [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) — MaaS integration for AutoRAG HPO
 - [RHOAIENG-79228](https://redhat.atlassian.net/browse/RHOAIENG-79228) — MaaS embeddings adoption
 - [RHOAIENG-79226](https://redhat.atlassian.net/browse/RHOAIENG-79226) — Agentic RAG deployment
-- [RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608) — AgentProfile schema for Gen AI Studio
-- [AgentProfile schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca) — ConfigMap / `profile.yaml` example and field definitions

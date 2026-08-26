@@ -128,13 +128,14 @@ Each optimization run produces run-level and per-pattern artifacts. Per-pattern 
 | ----------------- | ----- | ---- |
 | **Pattern record** (`pattern.json`) | Per pattern | Optimized settings, indexing workflow spec, evaluation summary |
 | **Evaluation detail** | Per pattern | Per-benchmark-row scores and retrieved context (audit and debugging) |
+| **Agentic template** (`agentic_template.zip`) | Per pattern | Parameterized agentic starter-kit for Studio / deploy ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#genai-studio-flow)) |
 | **Workflow notebooks** | Per pattern | Parameterized indexing and inference notebooks |
 | **Run output** | Per run | Execution status and logs |
 | **Experiment summary** | Per run | Data prep, search space, leaderboard, links to patterns |
 
 Schema, field definitions, and examples: [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md), [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md).
 
-📝 **Note:** Indexing may be executed via managed pipeline or notebook workflows; both are parameterized from the pattern record.
+📝 **Note:** Indexing may be executed via managed pipeline or notebook workflows; both are parameterized from the pattern record. Deploy uses **`agentic_template.zip`** emitted with each pattern.
 
 ### Scope (Tech Preview)
 

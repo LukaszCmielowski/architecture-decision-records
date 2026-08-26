@@ -292,15 +292,15 @@ Once a RAG pattern is optimized and the index is built, the pattern must be serv
 The [`agentic-starter-kits`](https://github.com/red-hat-data-services/agentic-starter-kits) repository provides a LangGraph-based [Agentic RAG template](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) that wraps retrieval and generation into a deployable agent application.
 
 ```text
-Optimized pattern (pattern.json)
+Optimized pattern (pattern.json + agentic_template.zip)
    │
    ├── settings.retrieval + vector_store_binding ──► LangChain retrieve
    │
    ├── settings.generation ────────────────────────► MaaS /v1/chat/completions
    │     (system / user / context templates)
    │
-   └── Agentic RAG starter-kit ────────────────────► Deployed agent application
-         (LangGraph orchestration)                     (container on OpenShift)
+   └── agentic_template.zip ───────────────────────► Deployed agent application
+         (parameterized agentic RAG starter-kit)         (container on OpenShift)
 ```
 
 The starter-kit agent is a **LangGraph** application that:
@@ -315,7 +315,7 @@ The starter-kit agent is a **LangGraph** application that:
 | **Deployment** | Helm chart → OpenShift (`make deploy`); local dev via `make run-app` |
 | **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) aligned with AutoML/AutoRAG tracking model |
 
-**Pattern → starter-kit wiring:** the pattern's `settings` block provides the configuration values the starter-kit consumes via environment variables. Today this wiring is manual (copy values to `.env` or `values.yaml`); the goal is to automate it so that selecting a pattern in the Dashboard pre-fills the deployment form.
+**Pattern → starter-kit wiring:** `rag_templates_optimization` emits **`agentic_template.zip`** per pattern — the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) parameterized from `pattern.json` `settings`. Dashboard / Studio can unpack the zip; a manual `.env` / `values.yaml` copy remains a fallback.
 
 | Pattern field | Starter-kit env var |
 |---------------|---------------------|
@@ -350,7 +350,7 @@ Each RAG template produces a pattern with a different inference contract. The de
 
 | Template | Inference contract | Starter-kit path | Notes |
 |----------|-------------------|-------------------|-------|
-| **Simple RAG** | `settings.generation` → MaaS `/v1/chat/completions` + LangChain retrieval | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) template | Shipping today |
+| **Simple RAG** | `settings.generation` → MaaS `/v1/chat/completions` + LangChain retrieval | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via **`agentic_template.zip`** | Shipping today |
 | **Neo4j Graph RAG** | Neo4j retriever (`HybridCypherRetriever`, etc.) → `GraphRAG.search` → answer | New starter-kit template with `neo4j-graphrag` retrievers + LangGraph orchestration | Requires Neo4j connectivity; LangGraph orchestration natural fit |
 
 **Simple RAG** uses the existing `agentic_rag` starter-kit — retrieve from `settings.vector_store_binding` and generate from `settings.generation`. **Graph RAG** requires a new agent template that replaces vector-only retrieval with Neo4j Cypher retrievers.

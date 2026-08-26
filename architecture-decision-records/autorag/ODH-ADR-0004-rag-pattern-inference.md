@@ -23,6 +23,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 
 * Define the target pattern.json schema (`settings`, `indexing`, `evaluation`; no `inference` block)
 * Document how `settings.generation` and `settings.retrieval` drive MaaS chat completions and LangChain retrieval
+* Document GenAI Studio / Playground retrieve-and-generate wiring from pattern artifacts
 * Document indexing.pipeline_spec for the managed documents-indexing-pipeline
 
 ## Non-Goals
@@ -42,6 +43,7 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
   - [Target schema](#target-schema)
 - [Example pattern.json](#example-patternjson)
 - [Retrieve and generation](#retrieve-and-generation)
+  - [GenAI Studio flow](#genai-studio-flow)
 - [Index building](#index-building)
 - [Related](#related)
 
@@ -56,6 +58,7 @@ Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipel
 | Artifact | Purpose |
 |----------|---------|
 | `pattern.json` | Authoritative record: `name`, `settings`, `indexing`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
+| `agentic_template.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for this pattern (Studio / deploy) |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks for the pattern |
 | `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson)) |
 
@@ -297,6 +300,15 @@ def generate(pattern_path: Path, question: str, documents: list[str]) -> dict:
 
 Retrieve chunks first (LangChain adapter + `settings.retrieval` / `settings.vector_store_binding`), then pass chunk texts into `generate`.
 
+### GenAI Studio flow
+
+Studio / Playground persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)). `agentic_template.zip` is the deployable starter-kit bundle for that pattern.
+
+1. Pipeline stores `pattern.json` and `agentic_template.zip` under the pattern subdirectory
+2. User selects a pattern in Studio / Dashboard
+3. Studio persists the AgentProfile (ConfigMap) and wires Playground / inference from `pattern.json` `settings` (and optionally unpacks `agentic_template.zip`)
+4. Runtime retrieve-and-generate follows the pattern’s `settings` (generation templates + vector-store binding)
+
 ---
 
 ## Index building
@@ -323,4 +335,6 @@ Index building populates the production vector store via the managed **`document
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, presets, chunking, retrieval
 - [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS and vector-DB Connections
+- [RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608) — AgentProfile schema for Gen AI Studio
+- [AgentProfile schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca) — ConfigMap / `profile.yaml` example and field definitions
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
