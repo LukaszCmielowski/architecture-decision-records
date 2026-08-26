@@ -68,10 +68,10 @@ One parent run per KFP pipeline execution; one nested child run per RAG pattern 
 | MLflow concept | Proposed mapping |
 |----------------|------------------|
 | **Experiment** | Use KFP-managed experiment (`MLFLOW_EXPERIMENT_ID`). Otherwise: e.g. `autorag_documents_rag_optimization` plus optional suffix. |
-| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `llama_stack_vector_io_provider_id`, `image`, `kfp_version`, `ai4rag_version`. |
+| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `vector_db_secret_name`, `image`, `kfp_version`, `ai4rag_version`. |
 | **Child runs** | One nested child run per RAG pattern (folder name or `pattern.json` `name`). Enables side-by-side comparison of faithfulness / answer_correctness / context_correctness and chunking / retrieval / model choices. |
 | **Traces** | **Required** when `MLFLOW_TRACKING_URI` is set. One trace per benchmark request, attached to the pattern child run. P patterns x N benchmark rows = P x N traces total. |
-| **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with MLflow `SpanType` where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for OGX `responses.create`. |
+| **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with MLflow `SpanType` where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for MaaS chat completions. |
 | **Params (child)** | From `pattern.json` settings: `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id`, `vector_store_binding` fields; from `inference.responses_template`: key fields as flattened params. |
 | **Metrics (child)** | From `pattern.json`: `duration_seconds`, `iteration`; from `evaluation.metrics[]`: `log_metric(name, scores.mean)` per entry; objective score from the entry with `optimization_metric: true` (logged as `final_score`). |
 | **Child Artifacts** | Pointers to KFP artifacts: `pattern.json`, `evaluation_results.json`, `indexing_notebook.ipynb`, `inference_notebook.ipynb`. Logged as params containing artifact URIs/paths, not copied into MLflow. |
@@ -135,7 +135,7 @@ Parent run (pipeline)
 | `autorag.generation` | `CHAT_MODEL` | Query + context in; answer out; `mlflow.chat.tokenUsage`; `ai.model.name` / `ai.model.provider` |
 | `autorag.evaluation` | (default) | Ground truth, prediction, context in; per-metric scores out; `metric.{name}` attributes |
 
-Enable `mlflow.openai.autolog()` at component start so OGX `responses.create` calls inside `autorag.generation` produce nested spans without duplicating the full request body.
+Enable `mlflow.openai.autolog()` at component start so MaaS OpenAI-compatible chat calls inside `autorag.generation` produce nested spans without duplicating the full request body.
 
 **Dependencies:** `mlflow>=2.22` (Responses API autolog); `openai` in the component or ai4rag image.
 
@@ -179,8 +179,7 @@ Enable `mlflow.openai.autolog()` at component start so OGX `responses.create` ca
 * MLflow span types: [MLflow span types documentation](https://mlflow.org/docs/latest/genai/concepts/span#span-types)
 * MLflow retriever schema: [MLflow retriever spans](https://mlflow.org/docs/latest/genai/concepts/span#retriever-spans)
 * OpenAI tracing: [MLflow OpenAI tracing](https://mlflow.org/docs/latest/genai/tracing/integrations/listing/openai/)
-* OGX MLflow tracing: [OGX MLflow observability](https://ogx-ai.github.io/blog/mlflow-observability)
-* Upstream pipeline: [pipelines-components — documents_rag_optimization_pipeline](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)
+* Upstream pipeline: [pipelines-components — documents_rag_optimization_pipeline](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)
 
 ## Reviews
 

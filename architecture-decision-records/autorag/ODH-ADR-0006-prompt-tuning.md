@@ -112,7 +112,7 @@ Prototype work showed concise, extraction-focused instructions often scoring hig
 | `auto_mode` | `light` / `medium` | MIPROv2 optimization intensity |
 | Enable / disable | feature flag or API option | Skip Stage 1 for default-prompt-only runs |
 
-Generation and judge calls use the same **OGX** client / foundation-model pool as the main experiment. Dependencies include **`dspy-ai`** and **`optuna`** (required by MIPROv2).
+Generation and judge calls use the same **MaaS** client / foundation-model pool as the main experiment. Dependencies include **`dspy-ai`** and **`optuna`** (required by MIPROv2).
 
 ---
 

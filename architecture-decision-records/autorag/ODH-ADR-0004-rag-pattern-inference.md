@@ -2,18 +2,18 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-07-29 |
+| Date           | 2026-08-26 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-1846](https://redhat.atlassian.net/browse/RHAISTRAT-1846) · [RHAISTRAT-1731](https://redhat.atlassian.net/browse/RHAISTRAT-1731) · [RHAISTRAT-1724](https://redhat.atlassian.net/browse/RHAISTRAT-1724) · [RHAISTRAT-1424](https://redhat.atlassian.net/browse/RHAISTRAT-1424) |
-| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0007-maas-support](./ODH-ADR-0007-maas-support.md) |
 
 ## What
 
-This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via OGX POST /v1/responses, and full-corpus index building through the managed documents indexing pipeline.
+This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via MaaS (OpenAI-compatible) plus the LangChain vector store, and full-corpus index building through the managed documents indexing pipeline.
 
 ## Why
 
@@ -22,7 +22,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 ## Goals
 
 * Define the target pattern.json schema (settings, inference, indexing, evaluation)
-* Document how inference.responses_template drives OGX POST /v1/responses
+* Document how inference.responses_template and `settings.generation` drive MaaS chat completions
 * Document indexing.pipeline_spec for the managed documents-indexing-pipeline
 
 ## Non-Goals
@@ -33,7 +33,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 
 ## How
 
-This page describes **AutoRAG patterns** after optimization: the **`pattern.json`** schema, **retrieve and generation** via **`POST /v1/responses`**, and **index building** into the production vector store.
+This page describes **AutoRAG patterns** after optimization: the **`pattern.json`** schema, **retrieve and generation** via **MaaS** and the pattern's vector-store binding, and **index building** into the production vector store.
 
 ## Table of contents
 
@@ -49,7 +49,7 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 
 ## Optimization pipeline
 
-The **[`documents_rag_optimization_pipeline`](https://github.com/red-hat-data-services/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** runs **`rag_templates_optimization`** to search RAG configurations and score each candidate on a benchmark (up to 1 GB document sample). Outputs land under **`rag_patterns/<pattern_subdir>/`** in DSPA storage (`<bucket>/<pipeline-name>/<run-id>/…`) plus a pipeline-wide HTML leaderboard.
+The **[`documents_rag_optimization_pipeline`](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** runs **`rag_templates_optimization`** to search RAG configurations and score each candidate on a benchmark (up to 1 GB document sample). Outputs land under **`rag_patterns/<pattern_subdir>/`** in DSPA storage (`<bucket>/<pipeline-name>/<run-id>/…`) plus a pipeline-wide HTML leaderboard.
 
 Each **`pattern.json`** captures optimized **settings**, **`inference`** (responses template), **`indexing`** (pipeline spec), and **`evaluation`** results. Index building processes the **full document corpus** into the vector store the pattern queries at inference time.
 
@@ -236,9 +236,7 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
 
 ## Retrieve and generation
 
-Optimization and production inference both use **OGX `POST /v1/responses`**. The request body is in **`inference.responses_template`** — production calls the same API surface the benchmark used.
-
-Substitute **`<user_query_placeholder>`** in `input`, then POST. Key fields: `model`, `input`, `tools` (`file_search` + `vector_store_ids`), `instructions`, `metadata`, `tool_choice`, `include`. Parse **`output`** (or SDK **`output_text`**) in consumers.
+Optimization and production generation both use **MaaS OpenAI-compatible chat completions** (`MAAS_BASE_URL`, `MAAS_API_KEY`). Retrieval uses the LangChain vector-store adapter bound in `settings.vector_store_binding` (Milvus or PGVector from `vector_db_secret_name`). When `inference.responses_template` is present, it is the frozen request body for that pattern; substitute **`<user_query_placeholder>`** then POST using the MaaS Connection.
 
 **Python:**
 
@@ -254,11 +252,11 @@ def query_pattern(pattern_path: Path, user_query: str) -> dict:
         for part in block.get("content", []):
             if part.get("text") == "<user_query_placeholder>":
                 part["text"] = user_query
-    base = os.environ["OGX_CLIENT_BASE_URL"].rstrip("/")
+    base = os.environ["MAAS_BASE_URL"].rstrip("/")
     r = requests.post(
         f"{base}/v1/responses",
         json=body,
-        headers={"Authorization": f"Bearer {os.environ['OGX_CLIENT_API_KEY']}"},
+        headers={"Authorization": f"Bearer {os.environ['MAAS_API_KEY']}"},
         timeout=120,
     )
     r.raise_for_status()
@@ -269,7 +267,7 @@ def query_pattern(pattern_path: Path, user_query: str) -> dict:
 
 ## Index building
 
-Index building populates the production vector store via the managed **`documents-indexing-pipeline`** ([`documents_indexing_pipeline`](https://github.com/red-hat-data-services/pipelines-components/tree/main/pipelines/data_processing/autorag/documents_indexing_pipeline)), registered in the AI Pipelines catalog. One pipeline definition serves all patterns; per-pattern values come from **`indexing.pipeline_spec`**.
+Index building populates the production vector store via the managed **`documents-indexing-pipeline`** ([`documents_indexing_pipeline`](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/data_processing/autorag/documents_indexing_pipeline/pipeline.py)), registered in the AI Pipelines catalog. One pipeline definition serves all patterns; per-pattern values come from **`indexing.pipeline_spec`**.
 
 | `pipeline_spec` field | Role |
 |-----------------------|------|
@@ -277,11 +275,11 @@ Index building populates the production vector store via the managed **`document
 | `parameters` | Pre-filled from optimization run + pattern `settings` |
 | `overrides_allowed` | Keys the UI may expose for user override at submit time |
 
-**Parameter sources:** optimization run → `ogx_secret_name`, `input_data_*`, `vector_io_provider_id`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `vector_store_id`. Secret fields are **names only** (Kubernetes Secret references).
+**Parameter sources:** optimization run → `maas_secret_name`, `vector_db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Secret fields are **names only** (Kubernetes Secret references).
 
 **Workflow:** optimization completes → user selects pattern → read `pipeline_spec` → resolve managed pipeline → pre-fill run form → user confirms/overrides → submit → full corpus indexed → [retrieve and generation](#retrieve-and-generation) ready.
 
-**Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change.
+**Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding (MaaS) → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change.
 
 ---
 
@@ -290,4 +288,5 @@ Index building populates the production vector store via the managed **`document
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, presets, chunking, retrieval
+- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS and vector-DB Connections
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)

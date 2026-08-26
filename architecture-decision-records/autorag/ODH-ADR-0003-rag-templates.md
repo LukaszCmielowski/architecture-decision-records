@@ -2,14 +2,14 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-07-29 |
+| Date           | 2026-08-26 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-2351](https://redhat.atlassian.net/browse/RHAISTRAT-2351) · [RHAISTRAT-2357](https://redhat.atlassian.net/browse/RHAISTRAT-2357) · [RHAIRFE-2709](https://redhat.atlassian.net/browse/RHAIRFE-2709) |
-| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0007-maas-support](./ODH-ADR-0007-maas-support.md) |
 
 ## What
 
@@ -101,7 +101,7 @@ question
 | **Indexing** | Chunk → embed → write vector store ([experiment settings](./ODH-ADR-0002-experiment-settings.md)) |
 | **Retrieval** | One query; `number_of_chunks`, `search_mode` (`vector` / `keyword` / `hybrid`), optional ranker |
 | **Generation** | One LLM call with system / user / context templates over retrieved chunks |
-| **Inference export** | Frozen **`inference.responses_template`** for OGX `POST /v1/responses` (`file_search` + generation) |
+| **Inference export** | Frozen **`inference.responses_template`** for MaaS OpenAI-compatible generation plus LangChain retrieval |
 | **Optimization** | GAM over chunking × embedding × retrieval × generation (and optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) candidates) |
 
 **Naming note:** ai4rag `hybrid` means dense + ranker fusion over chunks. That is **not** the same as LightRAG’s `hybrid` query mode (local + global graph — see [LightRAG core](#sub-template-lightrag-core)).
@@ -150,7 +150,7 @@ documents → text_extraction (Docling)
                                    Existing generator
 ```
 
-The extraction LLM runs **once during indexing** (same as Docling parsing), not per query. Enriched chunks flow through the existing `file_search` + generation inference path — no new `inference.responses_template` is needed.
+The extraction LLM runs **once during indexing** (same as Docling parsing), not per query. Enriched chunks flow through the existing LangChain retrieve + MaaS generate inference path — no new `inference.responses_template` is needed.
 
 
 TODO: which LLM if more than 1 ---> simple metric to select one 
@@ -220,7 +220,7 @@ Enrichment adds new dimensions to the existing GAM search space without changing
 |-----------|------|------|
 | `include_relations` | `bool` | Enable relationship enrichment (Strategy B) — analogous to `include_metadata` |
 | `relation_filter_mode` | `none` / `boost` / `filter` | Strategy A — how entity metadata affects retrieval scoring |
-| `extraction_model_id` | `str` | OGX model used for entity/relation extraction |
+| `extraction_model_id` | `str` | MaaS model used for entity/relation extraction |
 
 These sit alongside existing dimensions (`chunking.method`, `include_metadata`, `search_mode`, `number_of_chunks`) and are evaluated on the same leaderboard metrics.
 
@@ -233,7 +233,7 @@ These sit alongside existing dimensions (`chunking.method`, `include_metadata`, 
 
 ### Extraction model requirements
 
-LightRAG's entity/relation extraction is LLM-driven and requires a model with strong structured-output and reasoning capabilities. Community guidance suggests ≥ 32B parameters for reliable extraction. Use `extraction_model_id` to select a stronger OGX-served model when available — this can differ from the generation model.
+LightRAG's entity/relation extraction is LLM-driven and requires a model with strong structured-output and reasoning capabilities. Community guidance suggests ≥ 32B parameters for reliable extraction. Use `extraction_model_id` to select a stronger MaaS-served model when available — this can differ from the generation model.
 
 **What Enriched RAG does not cover:** multi-hop graph traversal, global/thematic queries (LightRAG `global` mode), or deep graph reasoning. Those use cases still require a graph-native template (see [Graph RAG template](#graph-rag-template)).
 
@@ -268,8 +268,8 @@ question
 |---------|-----------|
 | **Store** | Neo4j required for the graph; LightRAG also uses Postgres for vector/KV/doc-status |
 | **Indexing** | `extracted_text` → entity/relation extraction → graph (+ vector) write; indexes are **not** shared with simple-RAG Milvus chunk collections |
-| **Retrieval** | Dual-level graph modes (LightRAG) or Neo4j-native vector/hybrid/Cypher retrievers — not a single `file_search` hop |
-| **Generation** | LLM grounded in graph/hybrid context; OGX-backed embed/LLM adapters |
+| **Retrieval** | Dual-level graph modes (LightRAG) or Neo4j-native vector/hybrid/Cypher retrievers — not a single vector hop |
+| **Generation** | LLM grounded in graph/hybrid context; MaaS-backed embed/LLM adapters |
 | **Optimization** | Initially fixed configs; later GAMOpt over mode / retriever type / `top_k` / chunk tokens / schema constraints |
 | **Export** | Durable `pattern.json` with `pattern_type`, storage profile, workspace — reconnect after pod exit; richer than today’s `responses_template` alone |
 
@@ -281,9 +281,9 @@ Graph RAG remains **out of the current Tech Preview template set** until product
 |------|--------|
 | **Graph store** | Neo4j (`neo4j_secret_name`) — required for both Graph RAG sub-templates |
 | **PostgreSQL** | Required for the LightRAG path (`postgres_secret_name`) for KV, vector, and doc-status storage (alongside Neo4j for the graph) |
-| **OGX** | Embedding, generation, and extraction model ids via OGX secrets — no hardcoded vendor SDKs |
+| **MaaS** | Embedding, generation, and extraction model ids via `maas_secret_name` — no hardcoded vendor SDKs |
 | **Corpus** | Same Docling → `extracted_text` and pipeline `test_data` as simple RAG |
-| **vs simple RAG** | Graph RAG adds template types; it does not replace the current vector/`file_search` path |
+| **vs simple RAG** | Graph RAG adds template types; it does not replace the current LangChain vector retrieve + MaaS generate path |
 
 Without a reachable Neo4j, Graph RAG templates cannot run.
 
@@ -299,12 +299,12 @@ Without a reachable Neo4j, Graph RAG templates cannot run.
 | **Neo4j** (`Neo4JStorage`) | Knowledge graph |
 | **PostgreSQL** (+ `vector`) | `PGVectorStorage`, `PGKVStorage`, `PGDocStatusStorage` |
 | **Orchestration** | LightRAG’s own retrieve/generate loop (not LangChain-centric) |
-| **OGX** | `EmbeddingFunc` / LLM callbacks; prefer a stronger model for extraction when available |
+| **MaaS** | `EmbeddingFunc` / LLM callbacks; prefer a stronger model for extraction when available |
 
-**Storage profile:** `ogx_pgvector_neo4j` (default) — four logical roles on **two** physical DBs (KV cannot be skipped; it colocates on Postgres). PVC is scratch only; patterns reference Postgres workspace + Neo4j labels.
+**Storage profile:** `maas_pgvector_neo4j` (default) — four logical roles on **two** physical DBs (KV cannot be skipped; it colocates on Postgres). PVC is scratch only; patterns reference Postgres workspace + Neo4j labels.
 
 ```python
-# Profile: ogx_pgvector_neo4j (Neo4j + Postgres)
+# Profile: maas_pgvector_neo4j (Neo4j + Postgres)
 LightRAG(
     working_dir=WORKING_DIR,  # scratch only
     vector_storage="PGVectorStorage",
@@ -328,11 +328,11 @@ question ──▶ mode (naive|local|global|hybrid|mix) ──▶ context ──
 | **ai4rag type** | `LightRAGTemplate` |
 | **pattern_type** | `lightrag` |
 
-Later storage profiles (same template, Neo4j graph retained): `ogx_milvus_neo4j` (scale), `dev_local` (CI).
+Later storage profiles (same template, Neo4j graph retained): `maas_milvus_neo4j` (scale), `dev_local` (CI).
 
 | Storage profile | Graph store | Physical DBs | LightRAG | Neo4j GraphRAG |
 |-----------------|-------------|--------------|----------|----------------|
-| `ogx_pgvector_neo4j` | Neo4j | 2 (Postgres + Neo4j) | Yes | No (different sub-template) |
+| `maas_pgvector_neo4j` | Neo4j | 2 (Postgres + Neo4j) | Yes | No (different sub-template) |
 | `neo4j_hybrid_only` | Neo4j | 1 (Neo4j) | No | Yes |
 
 ### Sub-template: Neo4j GraphRAG
@@ -345,7 +345,7 @@ Official [`neo4j-graphrag`](https://neo4j.com/docs/neo4j-graphrag-python/current
 | **Retrievers** | See table below |
 | **Generation** | `neo4j_graphrag.generation.GraphRAG` |
 | **Neo4j** | Single DB for graph + vector + full-text — profile `neo4j_hybrid_only` |
-| **OGX** | Adapters implementing Neo4j `LLM` / `Embedder` interfaces |
+| **MaaS** | Adapters implementing Neo4j `LLM` / `Embedder` interfaces |
 
 | Retriever | Role |
 |-----------|------|
@@ -392,23 +392,25 @@ Track: Neo4jGraphRAGTemplate + neo4j-graphrag retrievers
 ### Pipeline integration
 
 ```text
-documents_discovery → text_extraction → search_space_preparation
+documents_discovery → search_space_preparation → text_extraction
+                                   ↓
+             models_pre_selector
                                    ↓
              rag_templates_optimization
              (SimpleRAG | LightRAGTemplate | Neo4jGraphRAGTemplate)
                                    ↓
-                        leaderboard_evaluation
+                        leaderboard (built in rag_templates_optimization)
                    (pattern_type: simple | lightrag | neo4j_graphrag)
 ```
 
 | Layer | Change |
 |-------|--------|
-| **ai4rag** | Templates on `BaseRAGTemplate`; `AI4RAGExperiment.rag_template_type`; OGX bridges; optional extras (`lightrag-hku`, `neo4j-graphrag`) |
+| **ai4rag** | Templates on `BaseRAGTemplate`; `AI4RAGExperiment.rag_template_type`; MaaS bridges; optional extras (`lightrag-hku`, `neo4j-graphrag`) |
 | **KFP** | `rag_template_type`, storage secrets, graph search-space dims, leaderboard `pattern_type` columns |
 | **Path A** | Preferred — templates inside the existing documents RAG optimization DAG |
 | **Path B** | Standalone KFP (`lightrag_indexing` → `lightrag_evaluation`) only if Path A merge is blocked |
 | **Template contract** | `build_index` / `generate` / `generate_stream` — not chunk-only vector store |
-| **Key params** | `rag_template_type`, `storage_profile`, `ogx_secret_name`, `embedding_model_id`, `generation_model_id`, `extraction_model_id`, `postgres_secret_name`, `neo4j_secret_name`, `query_mode` / `retriever_type`, `index_workspace` |
+| **Key params** | `rag_template_type`, `storage_profile`, `maas_secret_name`, `embedding_model_id`, `generation_model_id`, `extraction_model_id`, `postgres_secret_name`, `neo4j_secret_name`, `query_mode` / `retriever_type`, `index_workspace` |
 | **Acceptance** | Reconnect via `pattern.json` after pod exit; scores on pipeline `test_data` |
 | **Out of scope (v1)** | Sharing simple-RAG chunk collections as LightRAG indexes; LightRAG Server/WebUI; multimodal RAG-Anything; LangChain-first Neo4j retrieval; MiniRAG |
 
@@ -421,15 +423,15 @@ LightRAG pattern sketch:
   "pattern_type": "lightrag",
   "workspace": "<stable-index-id>",
   "storage": {
-    "storage_profile": "ogx_pgvector_neo4j",
+    "storage_profile": "maas_pgvector_neo4j",
     "kv_storage": "PGKVStorage",
     "vector_storage": "PGVectorStorage",
     "doc_status_storage": "PGDocStatusStorage",
     "graph_storage": "Neo4JStorage"
   },
   "query_defaults": { "mode": "mix", "top_k": 40 },
-  "indexing": { "embedding_model_id": "<ogx>", "chunk_token_size": 1200 },
-  "generation": { "model_id": "<ogx>" },
+  "indexing": { "embedding_model_id": "<maas>", "chunk_token_size": 1200 },
+  "generation": { "model_id": "<maas>" },
   "metrics": { "faithfulness": 0.0, "answer_correctness": 0.0 }
 }
 ```
@@ -447,7 +449,7 @@ Three relationship-aware options sit on a spectrum from **reuse existing Milvus*
 | **Intent** | Prove extraction helps retrieval **without** a graph DB | Own dual-level KG+vector RAG (local / global / mix) | Own Neo4j-native hybrid + Cypher RAG |
 | **ai4rag type** | `SimpleRAG` (extended search space) | `LightRAGTemplate` | `Neo4jGraphRAGTemplate` |
 | **pattern_type** | `simple` | `lightrag` | `neo4j_graphrag` |
-| **Physical DBs (typical)** | 1 — Milvus (existing) | **2** — Postgres + Neo4j (`ogx_pgvector_neo4j`) | **1** — Neo4j only |
+| **Physical DBs (typical)** | 1 — Milvus (existing) | **2** — Postgres + Neo4j (`maas_pgvector_neo4j`) | **1** — Neo4j only |
 | **Logical stores** | Chunk vectors (+ metadata) | **4 roles:** KV + vector + doc-status + graph (KV cannot be skipped) | Graph + vector + full-text **inside Neo4j** |
 | **Python deps** | LightRAG extract (or equivalent) only at index | `lightrag-hku` + Postgres drivers + Neo4j | `neo4j-graphrag` + `neo4j` (+ optional `langgraph`) |
 | **Ops surface** | Same as simple RAG + extraction LLM | Heaviest default: two DB secrets, workspace, four storage backends | One graph DB; fewer moving parts than default LightRAG |
@@ -461,7 +463,7 @@ Enriched RAG **borrows** LightRAG’s `extract_entities()` but never persists a 
 
 | | Pros | Cons |
 |--|------|------|
-| **Enriched** | No new DB; stays on Milvus + existing `file_search` export; cheap way to A/B extraction on today’s leaderboard | No graph traversal, no `global`/`mix` modes; relational signal capped at metadata / embedding text |
+| **Enriched** | No new DB; stays on Milvus + existing retrieve/generate export; cheap way to A/B extraction on today’s leaderboard | No graph traversal, no `global`/`mix` modes; relational signal capped at metadata / embedding text |
 | **LightRAG** | True multi-hop and thematic retrieval; incremental graph+vector index; query modes tuned for entity vs corpus-level questions | Extraction cost **plus** graph/vector infra; indexes not shared with simple RAG; heavier secrets and pattern reconnect |
 
 **Takeaway:** Enriched RAG answers “does extraction help?” LightRAG answers “do we need graph-native retrieval?” Prefer Enriched first if Milvus-only ops is a hard constraint.
@@ -474,7 +476,7 @@ Both are peer Graph RAG engines; GA default is **open**. Difference is **stack s
 |-----------|--------------|--------------------|
 | **Strength** | Dual-level modes (`naive`→`mix`) and entity/relation vector indexes out of the box; thin insert/query API | Single DB (`neo4j_hybrid_only`); schema-guided KG; first-class Hybrid/Cypher/Text2Cypher retrievers; vendor-supported `neo4j-graphrag` |
 | **Dependency weight** | **Heavier:** Postgres (KV+vector+doc-status) **and** Neo4j; four logical backends; `lightrag-hku` surface area | **Lighter ops:** one Neo4j; fewer storage classes; deps centered on `neo4j` / `neo4j-graphrag` |
-| **Storage variety** | Profiles: `ogx_pgvector_neo4j`, later `ogx_milvus_neo4j` / `dev_local` (Neo4j graph retained) | Low — Neo4j only (`neo4j_hybrid_only`) |
+| **Storage variety** | Profiles: `maas_pgvector_neo4j`, later `maas_milvus_neo4j` / `dev_local` (Neo4j graph retained) | Low — Neo4j only (`neo4j_hybrid_only`) |
 | **Flexibility** | Optional future Milvus vector role alongside Neo4j | Best when Neo4j is already (or will be) platform standard |
 | **Risk** | Community stack; more failure modes (two DBs, KV required) | Couples product to Neo4j; less “mode” vocabulary than LightRAG; Text2Cypher quality depends on schema + LLM |
 
@@ -500,9 +502,9 @@ AutoRAG / GAM should explore knobs that change **retrieval or generation quality
 
 | Template | Optimize (high value) | Optimize later / conditional | Usually **fix** (not GAM dims) |
 |----------|----------------------|------------------------------|----------------------------------|
-| **Current (simple) RAG** | `chunking.method` / `chunk_size` / `chunk_overlap`; `include_metadata` (hybrid); `embedding_model_id`; `search_mode`; `number_of_chunks`; hybrid `ranker_*`; `generation_model_id` + gen params (temp, max tokens); optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) candidates | Ranker strategy variants; embedding allow-list size; prompt candidate count | `vector_io_provider_id`, Docling preset (`speed`/`balanced`), corpus / `test_data`, OGX endpoint |
+| **Current (simple) RAG** | `chunking.method` / `chunk_size` / `chunk_overlap`; `include_metadata` (hybrid); `embedding_model_id`; `search_mode`; `number_of_chunks`; hybrid `ranker_*`; `generation_model_id` + gen params (temp, max tokens); optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) candidates | Ranker strategy variants; embedding allow-list size; prompt candidate count | `vector_db_secret_name`, Docling preset (`speed`/`balanced`), corpus / `test_data`, MaaS Connection |
 | **Relationship-Enriched RAG** | Everything in simple RAG **plus** `include_relations`, `relation_filter_mode` (`none`/`boost`/`filter`), `extraction_model_id` | Combining A+B strategies; relation keyword boost weight | Same infra as simple RAG; do not treat extraction as a per-query dim |
-| **LightRAG core** | **Query-time:** `mode` (`naive`/`local`/`global`/`hybrid`/`mix`), `top_k`, `chunk_top_k`, `enable_rerank`; **gen:** `generation_model_id`, temperature (~0.1–0.3) | **Index-time (costly):** `chunk_token_size` (~800–1500), `extraction_model_id`, embedding model (locks vectors) | `storage_profile` (`ogx_pgvector_neo4j`, …), DB secrets, workspace id, `enable_llm_cache` (ops, not quality objective) |
+| **LightRAG core** | **Query-time:** `mode` (`naive`/`local`/`global`/`hybrid`/`mix`), `top_k`, `chunk_top_k`, `enable_rerank`; **gen:** `generation_model_id`, temperature (~0.1–0.3) | **Index-time (costly):** `chunk_token_size` (~800–1500), `extraction_model_id`, embedding model (locks vectors) | `storage_profile` (`maas_pgvector_neo4j`, …), DB secrets, workspace id, `enable_llm_cache` (ops, not quality objective) |
 | **Neo4j GraphRAG** | **Query-time:** `retriever_type` (`hybrid_cypher` / `vector_cypher` / `text2cypher` / …), `top_k`, Cypher hop depth / `LIMIT`; **gen:** model + temperature | **Index-time:** `GraphSchema` strictness / entity types; embedding model; full-text vs vector index params | `storage_profile: neo4j_hybrid_only`, Neo4j secret, LangGraph on/off (orchestration, not core RAG score) |
 
 **Shared rules**
@@ -539,8 +541,8 @@ Optimized pattern (pattern.json)
    │
    ├── settings (chunking, embedding, retrieval, generation)
    │
-   ├── inference.responses_template ──────────► OGX POST /v1/responses
-   │     (simple RAG: file_search + generation)     (platform API — existing)
+   ├── inference.responses_template ──────────► MaaS OpenAI-compatible generation
+   │     (simple RAG: LangChain retrieve + generate)   (platform API — existing)
    │
    └── Agentic RAG starter-kit ──────────────► Deployed agent application
          (LangGraph orchestration)                  (container on OpenShift)
@@ -551,8 +553,8 @@ The starter-kit agent is a **LangGraph** application that:
 | Concern | Detail |
 |---------|--------|
 | **Orchestration** | LangGraph graph: route query → retrieve → generate → respond |
-| **Retrieval** | Vector store via OGX (`file_search` / `vector_io`) — Milvus (local) or pgvector (OpenShift) |
-| **Generation** | LLM via OGX (`BASE_URL`, `MODEL_ID`) — same model from the pattern's `generation.model_id` |
+| **Retrieval** | LangChain vector store (`vector_db_secret_name`) — Milvus or PGVector |
+| **Generation** | LLM via MaaS (`MAAS_BASE_URL`, `MAAS_API_KEY`) — same model from the pattern's `generation.model_id` |
 | **API** | `POST /chat/completions` (streaming / non-streaming), `GET /health` |
 | **Configuration** | Environment variables sourced from `pattern.json` settings: `MODEL_ID`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, `VECTOR_STORE_ID`, `VECTOR_STORE_PROVIDER` |
 | **Deployment** | Helm chart → OpenShift (`make deploy`); local dev via `make run-app` |
@@ -581,7 +583,7 @@ The starter-kit model serves as the initial deployment path. Future work will ex
 
 Key capabilities to add:
 - **Automated pattern-to-deployment wiring** — Dashboard reads `pattern.json`, pre-fills deployment config
-- **Graph RAG agent templates** — LangGraph agents that use LightRAG query modes or Neo4j Cypher retrievers instead of simple `file_search`
+- **Graph RAG agent templates** — LangGraph agents that use LightRAG query modes or Neo4j Cypher retrievers instead of simple vector retrieval
 - **Scaling and lifecycle** — horizontal pod autoscaling, health probes, rolling updates tied to re-indexed patterns
 
 ### Template-to-deployment mapping
@@ -590,12 +592,12 @@ Each RAG template produces a pattern with a different inference contract. The de
 
 | Template | Inference contract | Starter-kit path | Notes |
 |----------|-------------------|-------------------|-------|
-| **Simple RAG** | `inference.responses_template` → OGX `POST /v1/responses` with `file_search` | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) template | Shipping today |
+| **Simple RAG** | `inference.responses_template` → MaaS chat + LangChain retrieval | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) template | Shipping today |
 | **Enriched RAG** | Same as simple RAG (enrichment is in the indexed chunks, transparent at query time) | Same `agentic_rag` template | No agent-side changes needed |
 | **LightRAG core** | LightRAG query API (`mode`, `top_k`) → graph + vector context → generate | New starter-kit template or `agentic_rag` extended with LightRAG retriever | Requires LightRAG client in agent, Neo4j + Postgres connectivity |
 | **Neo4j GraphRAG** | Neo4j retriever (`HybridCypherRetriever`, etc.) → `GraphRAG.search` → answer | New starter-kit template with `neo4j-graphrag` retrievers + LangGraph orchestration | Requires Neo4j connectivity; LangGraph orchestration natural fit |
 
-**Simple and Enriched RAG** use the existing `agentic_rag` starter-kit unchanged — the `inference.responses_template` and OGX `file_search` contract are the same. **Graph RAG templates** require new agent templates that replace `file_search` with graph-native retrieval (LightRAG query modes or Neo4j Cypher retrievers).
+**Simple and Enriched RAG** use the existing `agentic_rag` starter-kit unchanged — the `inference.responses_template` and MaaS + LangChain retrieve/generate contract are the same. **Graph RAG templates** require new agent templates that replace vector-only retrieval with graph-native retrieval (LightRAG query modes or Neo4j Cypher retrievers).
 
 ---
 
@@ -605,6 +607,7 @@ Each RAG template produces a pattern with a different inference contract. The de
 - [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md) — optional prompt candidates injected into the current template
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — pattern artifacts and Responses export
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — benchmark metrics (`faithfulness`, `answer_correctness`, …)
+- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS and vector-DB Connections
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [LightRAG](https://github.com/HKUDS/LightRAG) / [Programming with Core](https://github.com/HKUDS/LightRAG/blob/main/docs/ProgramingWithCore.md)
 - [neo4j-graphrag — User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)

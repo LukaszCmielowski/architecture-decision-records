@@ -153,8 +153,7 @@ Inference consumers continue to use `inference.responses_template` as described 
 |------|----------------|
 | Adopt MaaS embeddings; drop `embedding_model_secret_name` | [RHOAIENG-79228](https://redhat.atlassian.net/browse/RHOAIENG-79228) |
 | Agentic RAG deployment from patterns | [RHOAIENG-79226](https://redhat.atlassian.net/browse/RHOAIENG-79226) |
-| Align [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) parameter table with MaaS Connections | Sibling ADR update |
-| Point [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) / [ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md) at MaaS for HPO consumers | Wording alignment |
+| Align [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) / [0003](./ODH-ADR-0003-rag-templates.md) / [0004](./ODH-ADR-0004-rag-pattern-inference.md) / [0006](./ODH-ADR-0006-prompt-tuning.md) with MaaS Connections | Done (2026-08-26) |
 
 ---
 
