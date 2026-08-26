@@ -56,7 +56,7 @@ These paths represent the **RHOAI 3.5+** artifact structure and are the **source
 
 | Artifact | Type | Purpose |
 |----------|------|---------|
-| **`pattern.json`** | JSON | Consolidated pattern record containing: chunking, embedding, retrieval, generation settings; Responses API request template in `inference.responses_template`; vector store binding; `indexing.pipeline_spec`; `evaluation` metrics and timing. Single source of truth for registration, deployment, and code generation. |
+| **`pattern.json`** | JSON | Consolidated pattern record: `settings` (chunking, embedding, retrieval, generation, vector-store binding), `indexing.pipeline_spec`, `evaluation` metrics, `iteration` / `duration_seconds`. Single source of truth for registration, deployment, and code generation. |
 | **`indexing_notebook.ipynb`** | Jupyter Notebook | Indexing notebook instantiated from templates, parameterized for this pattern. |
 | **`inference_notebook.ipynb`** | Jupyter Notebook | Inference notebook instantiated from templates, parameterized for this pattern. |
 | **`evaluation_results.json`** | JSON | Per-benchmark-row scores and I/O. |
@@ -68,11 +68,11 @@ One parent run per KFP pipeline execution; one nested child run per RAG pattern 
 | MLflow concept | Proposed mapping |
 |----------------|------------------|
 | **Experiment** | Use KFP-managed experiment (`MLFLOW_EXPERIMENT_ID`). Otherwise: e.g. `autorag_documents_rag_optimization` plus optional suffix. |
-| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `vector_db_secret_name`, `image`, `kfp_version`, `ai4rag_version`. |
+| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `vector_db_secret_name`, `graph_db_secret_name` (when set), `image`, `kfp_version`, `ai4rag_version`. |
 | **Child runs** | One nested child run per RAG pattern (folder name or `pattern.json` `name`). Enables side-by-side comparison of faithfulness / answer_correctness / context_correctness and chunking / retrieval / model choices. |
 | **Traces** | **Required** when `MLFLOW_TRACKING_URI` is set. One trace per benchmark request, attached to the pattern child run. P patterns x N benchmark rows = P x N traces total. |
 | **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with MLflow `SpanType` where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for MaaS chat completions. |
-| **Params (child)** | From `pattern.json` settings: `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id`, `vector_store_binding` fields; from `inference.responses_template`: key fields as flattened params. |
+| **Params (child)** | From `pattern.json` `settings`: `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id` / prompt fields, `vector_store_binding` (`provider_type`, `collection_name`). |
 | **Metrics (child)** | From `pattern.json`: `duration_seconds`, `iteration`; from `evaluation.metrics[]`: `log_metric(name, scores.mean)` per entry; objective score from the entry with `optimization_metric: true` (logged as `final_score`). |
 | **Child Artifacts** | Pointers to KFP artifacts: `pattern.json`, `evaluation_results.json`, `indexing_notebook.ipynb`, `inference_notebook.ipynb`. Logged as params containing artifact URIs/paths, not copied into MLflow. |
 
@@ -137,7 +137,7 @@ Parent run (pipeline)
 
 Enable `mlflow.openai.autolog()` at component start so MaaS OpenAI-compatible chat calls inside `autorag.generation` produce nested spans without duplicating the full request body.
 
-**Dependencies:** `mlflow>=2.22` (Responses API autolog); `openai` in the component or ai4rag image.
+**Dependencies:** `mlflow>=2.22` (OpenAI chat autolog); `openai` in the component or ai4rag image.
 
 **Verification:** In the MLflow UI: parent run > child run > **Traces** (N rows) > expand one trace to see `autorag.retrieval`, `autorag.generation`, `autorag.evaluation`.
 
@@ -158,7 +158,7 @@ Enable `mlflow.openai.autolog()` at component start so MaaS OpenAI-compatible ch
 ## Risks
 
 * **Trace volume at scale** — P patterns x N benchmark rows can produce large numbers of traces (e.g., 50 patterns x 100 rows = 5,000 traces per pipeline run). *Mitigation: Monitor MLflow server capacity; consider sampling for large benchmark sets in future releases.*
-* **`mlflow>=2.22` requirement** — Responses API autolog requires a recent MLflow version that may not be available in all RHOAI deployments. *Mitigation: Lazy-import and version-check; fall back to manual generation span logging if autolog is unavailable.*
+* **`mlflow>=2.22` requirement** — OpenAI chat autolog requires a recent MLflow version that may not be available in all RHOAI deployments. *Mitigation: Lazy-import and version-check; fall back to manual generation span logging if autolog is unavailable.*
 
 ## Stakeholder Impacts
 

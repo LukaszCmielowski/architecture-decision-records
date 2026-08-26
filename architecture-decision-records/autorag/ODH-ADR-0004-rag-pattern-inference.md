@@ -13,16 +13,16 @@
 
 ## What
 
-This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via MaaS (OpenAI-compatible) plus the LangChain vector store, and full-corpus index building through the managed documents indexing pipeline.
+This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via MaaS (OpenAI-compatible chat completions) plus the LangChain vector store, and full-corpus index building through the managed documents indexing pipeline.
 
 ## Why
 
-Optimized configurations must be portable across optimization, indexing, and inference. A durable pattern contract lets Dashboard and APIs select a winning pattern, rebuild the production index, and call the same responses surface used during benchmarking.
+Optimized configurations must be portable across optimization, indexing, and inference. A durable pattern contract lets Dashboard and APIs select a winning pattern, rebuild the production index, and reconstruct retrieve-and-generate from `settings` (the same chunking, retrieval, and generation fields used during benchmarking). There is no frozen request-body template in `pattern.json`.
 
 ## Goals
 
-* Define the target pattern.json schema (settings, inference, indexing, evaluation)
-* Document how inference.responses_template and `settings.generation` drive MaaS chat completions
+* Define the target pattern.json schema (`settings`, `indexing`, `evaluation`; no `inference` block)
+* Document how `settings.generation` and `settings.retrieval` drive MaaS chat completions and LangChain retrieval
 * Document indexing.pipeline_spec for the managed documents-indexing-pipeline
 
 ## Non-Goals
@@ -51,11 +51,11 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 
 The **[`documents_rag_optimization_pipeline`](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** runs **`rag_templates_optimization`** to search RAG configurations and score each candidate on a benchmark (up to 1 GB document sample). Outputs land under **`rag_patterns/<pattern_subdir>/`** in DSPA storage (`<bucket>/<pipeline-name>/<run-id>/…`) plus a pipeline-wide HTML leaderboard.
 
-Each **`pattern.json`** captures optimized **settings**, **`inference`** (responses template), **`indexing`** (pipeline spec), and **`evaluation`** results. Index building processes the **full document corpus** into the vector store the pattern queries at inference time.
+Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipeline spec), and **`evaluation`** results. Index building processes the **full document corpus** into the vector store the pattern queries at inference time. Consumers assemble chat completions from `settings.generation`; they do **not** read an `inference` / `responses_template` object.
 
 | Artifact | Purpose |
 |----------|---------|
-| `pattern.json` | Authoritative record: `settings`, `inference`, `indexing`, `evaluation`, timing |
+| `pattern.json` | Authoritative record: `name`, `settings`, `indexing`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks for the pattern |
 | `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson)) |
 
@@ -73,7 +73,9 @@ pattern.json
 │   ├── chunking (method, chunk_size, chunk_overlap, include_metadata)
 │   ├── embedding (model_id, embedding_params)
 │   ├── retrieval (method, number_of_chunks, search_mode, ranker_strategy, ranker_alpha)
-│   └── generation (model_id, temperature, max_completion_tokens, templates, language)
+│   └── generation (model_id, temperature, max_completion_tokens,
+│                   context_template_text, user_message_text,
+│                   system_message_text, language)
 ├── indexing
 │   └── pipeline_spec
 │       ├── pipeline_name
@@ -89,9 +91,11 @@ pattern.json
 | Field | Description |
 |-------|-------------|
 | `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time |
-| `settings` | Optimized RAG config: `vector_store_binding`, `chunking`, `embedding`, `retrieval`, `generation` (incl. `language` — benchmark language from search-space preparation, `{code, name}`) |
+| `settings` | Optimized RAG config: `vector_store_binding` (`provider_type`, `collection_name`), `chunking` (incl. `include_metadata`), `embedding`, `retrieval` (`method`, `number_of_chunks`, `search_mode`, ranker fields), `generation` (model, sampling, `context_template_text` / `user_message_text` / `system_message_text`, `language` `{code, name}`) |
 | `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
-| `evaluation` | `metrics[]` — per-metric `evaluator`, `name`, `scores` (`mean`, `ci_low`, `ci_high`); exactly one entry has `optimization_metric: true` (GAM objective). See [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) |
+| `evaluation` | `metrics[]` — per-metric `evaluator`, `name`, `description`, `scores` (`mean`, `ci_low`, `ci_high`); `model_id` on judge entries; exactly one entry has `optimization_metric: true` (GAM objective). See [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) |
+
+`pattern.json` has **no** `inference` object and **no** `responses_template`. Prompt text lives only under `settings.generation`.
 
 GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) parameter (default `overall_score`). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
 
@@ -236,32 +240,62 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
 
 ## Retrieve and generation
 
-Optimization and production generation both use **MaaS OpenAI-compatible chat completions** (`MAAS_BASE_URL`, `MAAS_API_KEY`). Retrieval uses the LangChain vector-store adapter bound in `settings.vector_store_binding` (Milvus or PGVector from `vector_db_secret_name`). When `inference.responses_template` is present, it is the frozen request body for that pattern; substitute **`<user_query_placeholder>`** then POST using the MaaS Connection.
+Optimization and production generation both use **MaaS OpenAI-compatible chat completions** (`MAAS_BASE_URL`, `MAAS_API_KEY`) — `POST {MAAS_BASE_URL}/v1/chat/completions`. Retrieval uses the LangChain vector-store adapter for `settings.vector_store_binding.provider_type` / `collection_name` (Milvus or PGVector credentials from `vector_db_secret_name`). Query-time knobs come from `settings.retrieval` (`method`, `number_of_chunks`, `search_mode`, `ranker_strategy`, `ranker_alpha`).
 
-**Python:**
+Assemble the chat request from **`settings.generation`**:
+
+| Field | Role |
+|-------|------|
+| `model_id` | Chat `model` |
+| `temperature`, `max_completion_tokens` | Sampling |
+| `system_message_text` | System message |
+| `context_template_text` | Per-chunk formatting (`{doc_number}`, `{document}`) |
+| `user_message_text` | User message (`{reference_documents}`, `{question}`) |
+
+**Python (generation body after retrieval):**
 
 ```python
-import copy, json, os
+import json, os
 from pathlib import Path
 import requests
 
-def query_pattern(pattern_path: Path, user_query: str) -> dict:
+def format_context(pattern: dict, documents: list[str]) -> str:
+    tmpl = pattern["settings"]["generation"]["context_template_text"]
+    return "\n\n".join(
+        tmpl.format(doc_number=i, document=doc)
+        for i, doc in enumerate(documents, start=1)
+    )
+
+def chat_completions_body(pattern: dict, question: str, documents: list[str]) -> dict:
+    gen = pattern["settings"]["generation"]
+    user = gen["user_message_text"].format(
+        reference_documents=format_context(pattern, documents),
+        question=question,
+    )
+    return {
+        "model": gen["model_id"],
+        "temperature": gen["temperature"],
+        "max_completion_tokens": gen["max_completion_tokens"],
+        "messages": [
+            {"role": "system", "content": gen["system_message_text"]},
+            {"role": "user", "content": user},
+        ],
+    }
+
+def generate(pattern_path: Path, question: str, documents: list[str]) -> dict:
     pattern = json.loads(pattern_path.read_text())
-    body = copy.deepcopy(pattern["inference"]["responses_template"])
-    for block in body.get("input", []):
-        for part in block.get("content", []):
-            if part.get("text") == "<user_query_placeholder>":
-                part["text"] = user_query
     base = os.environ["MAAS_BASE_URL"].rstrip("/")
     r = requests.post(
-        f"{base}/v1/responses",
-        json=body,
+        f"{base}/v1/chat/completions",
+        json=chat_completions_body(pattern, question, documents),
         headers={"Authorization": f"Bearer {os.environ['MAAS_API_KEY']}"},
         timeout=120,
     )
     r.raise_for_status()
     return r.json()
 ```
+
+Retrieve chunks first (LangChain adapter + `settings.retrieval` / `settings.vector_store_binding`), then pass chunk texts into `generate`.
 
 ---
 

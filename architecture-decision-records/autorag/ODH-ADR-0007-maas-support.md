@@ -76,6 +76,7 @@ Public surface of `documents_rag_optimization_pipeline` (see also [ODH-ADR-0002]
 |--------------------------|------|
 | `maas_secret_name`       | MaaS Connection — LLM discovery and chat / judge invocations |
 | `vector_db_secret_name` | Vector DB Connection for LangChain adapters |
+| `graph_db_secret_name`  | Graph DB Connection for Graph RAG (Neo4j). Empty for simple RAG. See [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#connections). |
 
 Data references (`test_data_*`, `input_data_*`) and optimization controls (`optimization_metric`, `optimization_max_rag_patterns`, `preset`) are unchanged in role. Model allow-lists apply to the MaaS catalog.
 
@@ -96,6 +97,16 @@ Data references (`test_data_*`, `input_data_*`) and optimization controls (`opti
   "PGVECTOR_DB": "PGVECTOR_DB",
   "PGVECTOR_USER": "PGVECTOR_USER",
   "PGVECTOR_PASSWORD": "PGVECTOR_PASSWORD"
+}
+```
+
+**Neo4j** (`graph_db_secret_name` — Graph RAG only)
+```json
+{
+  "NEO4J_URI": "NEO4J_URI",
+  "NEO4J_USERNAME": "NEO4J_USERNAME",
+  "NEO4J_PASSWORD": "NEO4J_PASSWORD",
+  "NEO4J_DATABASE": "NEO4J_DATABASE"
 }
 ```
 
@@ -133,17 +144,17 @@ GAM selection, `pattern.json` emission, and metric backends remain as in [ODH-AD
 
 | Artifact                    | Role                                                                          |
 |-----------------------------|-------------------------------------------------------------------------------|
-| `pattern.json`              | **Source of truth** — settings, inference template, indexing spec, evaluation |
+| `pattern.json`              | **Source of truth** — `settings`, `indexing`, `evaluation` |
 | `agentic_template.zip` | agentic starter kit aligned with https://github.com/red-hat-data-services/agentic-starter-kits |
 
-Inference consumers continue to use `inference.responses_template` as described in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md). Studio / Playground persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)).
+Inference consumers assemble MaaS chat completions from `settings.generation` and retrieve via `settings.vector_store_binding`, as described in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md). Studio / Playground persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)).
 
 ### GenAI Studio flow
 
 1. Pipeline stores `pattern.json` 
 2. User selects a pattern in Studio / Dashboard
 3. Studio persists the AgentProfile (ConfigMap) and wires Playground / inference
-4. Runtime retrieve-and-generate follows the pattern’s `responses_template` and vector store binding ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md))
+4. Runtime retrieve-and-generate follows the pattern’s `settings` (generation templates + vector-store binding) ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md))
 
 ---
 
@@ -161,7 +172,7 @@ Inference consumers continue to use `inference.responses_template` as described 
 
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) — parent AutoRAG architecture
 - [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters and search space
-- [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json` and inference template
+- [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json` and retrieve / generate
 - [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metrics and judge
 - [ODH-ADR-0006-prompt-tuning](./ODH-ADR-0006-prompt-tuning.md) — DSPy pre-check (shares MaaS chat/judge path)
 - [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) — MaaS integration for AutoRAG HPO

@@ -44,7 +44,6 @@ AutoRAG automates this process, enabling users to:
 
 * Auto LLM deployment / shut down for experiment run purposes
 * Direct coupling to a specific LLM vendor or vector database product (access goes through platform abstractions)
-* Multi-modal RAG support (images, audio, video in documents)
 * LLM fine-tuning or model training capabilities
 * Optimization resume/checkpointing for interrupted runs
 
@@ -106,7 +105,7 @@ flowchart LR
 
 **Phase 2 — Index** — User selects a pattern and runs an indexing workflow against the **full document corpus**, populating the vector store referenced by that pattern.
 
-**Phase 3 — Infer** — Consumers call the platform inference API using the pattern's exported **inference template**; retrieval is delegated to the registered vector store.
+**Phase 3 — Infer** — Consumers retrieve from the pattern's vector-store binding and call MaaS chat completions assembled from `settings.generation` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
 
 ### Pipeline Inputs (categories)
 
@@ -127,7 +126,7 @@ Each optimization run produces run-level and per-pattern artifacts. Per-pattern 
 
 | Artifact category | Scope | Role |
 | ----------------- | ----- | ---- |
-| **Pattern record** (`pattern.json`) | Per pattern | Optimized settings, inference template, indexing workflow spec, evaluation summary |
+| **Pattern record** (`pattern.json`) | Per pattern | Optimized settings, indexing workflow spec, evaluation summary |
 | **Evaluation detail** | Per pattern | Per-benchmark-row scores and retrieved context (audit and debugging) |
 | **Workflow notebooks** | Per pattern | Parameterized indexing and inference notebooks |
 | **Run output** | Per run | Execution status and logs |
@@ -153,13 +152,6 @@ Architectural boundaries for the current Tech Preview release:
 | **Interfaces** | Programmatic API and RHOAI Dashboard UI |
 
 Specific parameter names, presets, retrieval modes, and metric backends are detailed in sibling ADRs rather than this parent overview.
-
-### Future Enhancements
-
-* Multi-lingual support beyond English-primary workflows
-* Synthetic benchmark / test data generation
-* Parallel or distributed optimization
-* First-class deployable inference endpoints for optimized patterns (beyond notebooks and platform API templates)
 
 ## Alternatives
 

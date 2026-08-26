@@ -134,7 +134,7 @@ Full-benchmark metrics for Stage 2 remain those in [RAG pattern evaluation](./OD
 
 - Pre-check output is a list of prompt templates merged with **defaults** before GAM explores the product search space.
 - GAM still selects the best overall pattern (retrieval + chunking + generation, including which prompt won).
-- Winning generation text lands in **`pattern.json`** → `settings.generation` (and the frozen `inference.responses_template`) like any other trial—see [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md).
+- Winning generation text lands in **`pattern.json`** → `settings.generation` (`system_message_text`, `user_message_text`, `context_template_text`) like any other trial—see [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md).
 - Pre-check can run standalone for inspection, or as part of an end-to-end experiment helper that chains Stage 1 → Stage 2.
 
 Optional / disabled pre-check leaves today’s default-prompt GAM path unchanged.

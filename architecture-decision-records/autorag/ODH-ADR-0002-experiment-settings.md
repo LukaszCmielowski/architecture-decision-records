@@ -17,7 +17,7 @@ This ADR documents the AutoRAG documents RAG optimization pipeline public parame
 
 ## Why
 
-Pipeline operators and Dashboard integrations need a stable contract for how optimization runs are configured (data sources, MaaS and vector-DB Connections, required model lists, presets) and which chunking and retrieval knobs form the searchable configuration space. Capturing this as an ADR keeps the contract versioned alongside the AutoRAG architecture.
+Pipeline operators and Dashboard integrations need a stable contract for how optimization runs are configured (data sources, MaaS, vector-DB, and graph-DB Connections, required model lists, presets) and which chunking and retrieval knobs form the searchable configuration space. Capturing this as an ADR keeps the contract versioned alongside the AutoRAG architecture.
 
 ## Goals
 
@@ -28,7 +28,7 @@ Pipeline operators and Dashboard integrations need a stable contract for how opt
 ## Non-Goals
 
 * RAG template composition beyond the current simple-RAG search space (see ODH-ADR-0003)
-* pattern.json inference / indexing export schema (see ODH-ADR-0004)
+* pattern.json schema (settings, indexing, evaluation — see ODH-ADR-0004)
 * Evaluation metric backends and judge selection (see ODH-ADR-0005)
 * MaaS integration rationale (see ODH-ADR-0007)
 
@@ -63,6 +63,7 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `input_data_key` | `str` | `""` | Object key or prefix for input documents |
 | `maas_secret_name` | `str` | (required) | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`). Used for model validation, embeddings, generation, and judge calls. |
 | `vector_db_secret_name` | `str` | (required) | Vector DB Connection. Key prefix selects the backend: `MILVUS_*` (at least `MILVUS_URI`) or `PGVECTOR_*`. |
+| `graph_db_secret_name` | `str` | `""` | Graph DB Connection for the **Graph RAG** template. Empty for simple RAG. Required when Graph RAG is selected ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). v1 backend: **Neo4j** (`NEO4J_*` keys). |
 | `embedding_models` | `list[str]` | (required) | Non-empty list of embedding model ids for the search space. MaaS does not expose type metadata, so models cannot be inferred. |
 | `generation_models` | `list[str]` | (required) | Non-empty list of generation / foundation model ids for the search space. Same reason as `embedding_models`. |
 | `optimization_metric` | `str` | `overall_score` | GAM objective: `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`. The first three are deterministic Unitxt metrics. `answer_relevance` (LLM judge) is always computed; it drives ranking only when selected, or as part of `overall_score`. |
@@ -94,6 +95,16 @@ Backend is selected from keys present on the secret (mounted on `rag_templates_o
 | PGVector | `PGVECTOR_HOST`, `PGVECTOR_PORT`, `PGVECTOR_DB`, `PGVECTOR_USER`, `PGVECTOR_PASSWORD` | Else any `PGVECTOR*` env var |
 
 Missing both prefixes fails the optimization step.
+
+**Graph database** (`graph_db_secret_name`)
+
+Used only for the Graph RAG template. Unused / empty for simple RAG. v1 supports **Neo4j**; keys are detected on the secret (mounted on `rag_templates_optimization`):
+
+| Backend | Keys | Selection |
+|---------|------|-----------|
+| Neo4j | `NEO4J_URI` (required; `neo4j://` or `bolt://`), `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` (optional; default `neo4j`) | Any `NEO4J*` env var |
+
+When Graph RAG is selected, a missing or non-Neo4j secret fails the optimization step. Simple RAG ignores this parameter.
 
 **Object storage** (`test_data_secret_name`, `input_data_secret_name`)
 
@@ -151,7 +162,7 @@ One parse per document; trials branch on `chunking.method` without re-parsing PD
 
 ### Docling hybrid — `include_metadata`
 
-Hybrid-only boolean on `pattern.json`. When `true`, indexing inlines structural (and, on `balanced`, LLM) context into the text sent to the embedding model, not as separate vector fields. The `pattern.json` field remains **`include_metadata`**.
+Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadata`**. When `true`, indexing inlines structural (and, on `balanced`, LLM) context into the text sent to the embedding model, not as separate vector fields.
 
 | Field | Role |
 |-------|------|
@@ -223,6 +234,6 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
 - [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md)
-- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS and vector-DB Connections
+- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS, vector-DB, and graph-DB Connections
 - [documents_rag_optimization_pipeline](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)
 - [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/)
