@@ -43,7 +43,6 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 - [pattern.json](#patternjson)
   - [Example pattern.json](#example-patternjson)
 - [Retrieve and generation](#retrieve-and-generation)
-  - [Serving flows](#serving-flows)
   - [Inference notebook](#inference-notebook)
   - [Agentic Starter-kit](#agentic-starter-kit)
   - [One-click Deployment](#one-click-deployment)
@@ -271,38 +270,6 @@ Retrieve chunks first (LangChain adapter + `settings.retrieval` / `settings.vect
 | [Agentic Starter-kit](#agentic-starter-kit) | Developer | Download zip, customize code, `make run-app` / Helm `make deploy` |
 | [One-click Deployment](#one-click-deployment) | Operator / Dashboard | One-click default RAG: prebuilt `autorag-inference` image on [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) |
 
-### Serving flows
-
-Index building is a shared prerequisite. Three paths call MaaS through LangChain (notebook) or the LangGraph agent (`POST /chat/completions`). Studio is a separate OGX test backend.
-
-```mermaid
-flowchart TB
-  Opt[Optimization pipeline] --> Art["pattern.json + zip + notebooks"]
-  Art --> Idx[Index building]
-  Idx --> Ready[Vector collection ready]
-
-  Ready --> NB[Inference notebook]
-  Ready --> Zip[Download agentic_template.zip]
-  Ready --> Click[One-click Dashboard]
-  Ready --> Studio[GenAI Studio test]
-
-  NB --> MaaS["MaaS POST /v1/chat/completions"]
-  NB --> VS[(Vector store)]
-
-  Zip --> Local["make run-app"]
-  Zip --> Helm["Helm make deploy"]
-  Local --> Agent["POST /chat/completions"]
-  Helm --> Agent
-  Click --> SB["SandboxClaim + autorag-inference"]
-  SB --> Agent
-  Agent --> MaaS
-  Agent --> VS
-
-  Studio --> Prof[AgentProfile ConfigMap]
-  Prof --> OGX[Studio OGX backend]
-  OGX --> VS
-```
-
 ### Inference notebook
 
 `inference_notebook.ipynb` sits next to `pattern.json` under `rag_patterns/<pattern_name>/`. It is for **inspecting** retrieve-and-generate in the workbench. It is not a server: it does not start FastAPI, Helm, or a sandbox. Distinct from `indexing_notebook.ipynb`, which builds the full-corpus index.
@@ -316,21 +283,6 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 5. Format context with `settings.generation.context_template_text` (`{doc_number}`, `{document}`).
 6. Call MaaS `POST /v1/chat/completions` with `system_message_text`, `user_message_text` (`{reference_documents}`, `{question}`), `model_id`, `temperature`, and `max_completion_tokens`.
 7. Display the answer and retrieved chunks.
-
-```mermaid
-sequenceDiagram
-  participant User
-  participant NB as inference_notebook.ipynb
-  participant Conn as Connections
-  participant VS as Vector store
-  participant MaaS
-  User->>NB: sample query
-  NB->>Conn: MAAS_* and vector_db_secret_name
-  NB->>VS: retrieve settings.retrieval
-  VS-->>NB: chunks
-  NB->>MaaS: POST /v1/chat/completions
-  MaaS-->>NB: answer
-```
 
 ### Agentic Starter-kit
 
@@ -354,21 +306,6 @@ sequenceDiagram
 6. **Run locally:** `make run-app` or `make run-cli`.
 7. **Deploy a custom image:** Helm (`make build` or `make build-openshift`, then `make deploy`). Default (unedited) app: [One-click Deployment](#one-click-deployment).
 
-```mermaid
-flowchart TB
-  DL[Download agentic_template.zip] --> Init["make init / make env"]
-  Init --> Tweak[Edit src or .env]
-  Tweak --> Local["make run-app"]
-  Tweak --> Build["make build or make build-openshift"]
-  Local --> UV["uvicorn PORT 8000"]
-  Build --> Deploy["make deploy Helm"]
-  Deploy --> Route[OpenShift Route]
-  UV --> API["POST /chat/completions"]
-  Route --> API
-  API --> VS[(Vector store)]
-  API --> MaaS[MaaS]
-```
-
 ### One-click Deployment
 
 **One-click** serving of the **default** RAG application: no zip unpack, no user image build. Dashboard (or API) starts a pod from the prebuilt **`autorag-inference`** image with env taken from `pattern.json` `settings` and project Connections. The image exposes the same contract as the kit: `POST /chat/completions`, `GET /health`.
@@ -385,22 +322,6 @@ Runtime is [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) (SIG Apps): 
 **Env vs warm pool:** Agent Sandbox bakes env into the Pod at create time. A `SandboxClaim` that sets `spec.env` **cannot adopt** a warm-pool pod; the controller cold-starts from the template ([API: `SandboxClaim.spec.env`](https://agent-sandbox.sigs.k8s.io/docs/api/)). AutoRAG MVP accepts that: pattern settings differ per claim, so one-click is “prebuilt image + cold start from template,” still cheaper than `make build` / Helm. A later design can keep a generic image in the warm pool and supply `pattern.json` after start (no per-claim `spec.env`) if millisecond adopt is required.
 
 **Flow:** user selects a pattern (index already built) → Dashboard creates a `SandboxClaim` against the AutoRAG inference template → controller creates a `Sandbox` from the template with claim env + MaaS / vector-DB secrets → `GET /health` then `POST /chat/completions`. Python and Go [clients](https://agent-sandbox.sigs.k8s.io/docs/getting_started/overview/) can claim the same template without the UI.
-
-```mermaid
-flowchart TB
-  User[Select pattern] --> Dash[Dashboard]
-  Dash --> Claim["SandboxClaim spec.env"]
-  Tpl["SandboxTemplate autorag-inference"] --> Ctrl[Agent Sandbox controller]
-  Pool["SandboxWarmPool optional"] -.-> Ctrl
-  Claim --> Ctrl
-  Ctrl --> SB[Sandbox Pod]
-  SB --> Health["GET /health"]
-  Health --> Chat["POST /chat/completions"]
-  Chat --> VS[(Vector store)]
-  Chat --> MaaS[MaaS]
-```
-
-`spec.env` forces a cold start from the template (warm-pool adoption is skipped).
 
 This is the default-app path. Edited starter-kit code uses Helm (`make deploy`). The kit's `make deploy-openshell` / `Containerfile.openshell` is a related isolated-runtime experiment; product one-click is Agent Sandbox + `autorag-inference`.
 
@@ -424,16 +345,9 @@ Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlass
 3. AutoRAG Dashboard persists an AgentProfile (ConfigMap) from the fields above.
 4. The AgentProfile is opened in Studio and wired to Studio's OGX backend.
 
-```mermaid
-flowchart LR
-  PJ["pattern.json"] --> Dash[AutoRAG Dashboard]
-  Dash --> CM[AgentProfile ConfigMap]
-  CM --> Studio[GenAI Studio]
-  Studio --> OGX[OGX backend]
-  OGX --> VS[(Vector store)]
-```
-
 Studio does not create an Agent Sandbox, does not unpack `agentic_template.zip`, and does not call the one-click `/chat/completions` API.
+
+---
 
 ## Index building
 
@@ -448,17 +362,6 @@ Index building populates the production vector store via the managed **`document
 **Parameter sources:** optimization run → `maas_secret_name`, `vector_db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Secret fields are **names only** (Kubernetes Secret references).
 
 **Workflow:** optimization completes → user selects pattern → read `pipeline_spec` → resolve managed pipeline → pre-fill run form → user confirms/overrides → submit → full corpus indexed → [retrieve and generation](#retrieve-and-generation) ready.
-
-```mermaid
-flowchart LR
-  Spec["indexing.pipeline_spec"] --> Form[Dashboard pre-fill]
-  Form --> Pipe[documents-indexing-pipeline]
-  Pipe --> Load[Load and extract]
-  Load --> Chunk[Chunk]
-  Chunk --> Emb[Embed via MaaS]
-  Emb --> VS[(Vector store)]
-  VS --> Ready[Retrieve and generation ready]
-```
 
 **Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding (MaaS) → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change.
 

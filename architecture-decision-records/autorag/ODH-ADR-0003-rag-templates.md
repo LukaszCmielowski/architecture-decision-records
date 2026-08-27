@@ -283,7 +283,7 @@ Start Graph RAG with **fixed** `retriever_type=hybrid_cypher` for smoke tests; t
 
 ## Template-to-deployment mapping
 
-How to **serve** a pattern (notebook, zip + Helm, one-click Agent Sandbox, Studio OGX test): [ODH-ADR-0004 — Serving flows](./ODH-ADR-0004-rag-pattern-inference.md#serving-flows). Zip/Helm: [Agentic Starter-kit](./ODH-ADR-0004-rag-pattern-inference.md#agentic-starter-kit). One-click: [One-click Deployment](./ODH-ADR-0004-rag-pattern-inference.md#one-click-deployment).
+How to **serve** a pattern (notebook, zip + Helm, one-click Agent Sandbox, Studio OGX test): [ODH-ADR-0004 — Retrieve and generation](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation). Zip/Helm: [Agentic Starter-kit](./ODH-ADR-0004-rag-pattern-inference.md#agentic-starter-kit). One-click: [One-click Deployment](./ODH-ADR-0004-rag-pattern-inference.md#one-click-deployment).
 
 This ADR only records **which template** maps to which starter-kit path.
 
