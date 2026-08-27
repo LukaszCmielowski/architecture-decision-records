@@ -13,7 +13,7 @@
 
 ## What
 
-This ADR defines AutoRAG / ai4rag RAG templates: the reusable retrieve-and-generate blueprints parameterized during optimization. It covers the shipping simple RAG template, planned Neo4j Graph RAG, and pattern deployment implications.
+This ADR defines AutoRAG / ai4rag RAG templates: the reusable retrieve-and-generate blueprints parameterized during optimization. It covers the shipping simple RAG template, planned Neo4j Graph RAG, and which template maps to which starter-kit path. Serving (Helm, one-click, notebooks, Studio): [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation).
 
 ## Why
 
@@ -23,7 +23,7 @@ Template choice determines composition (retrieve/generate), infrastructure (vect
 
 * Document the current simple retrieve-then-generate template and its optimization / inference contract
 * Document Neo4j Graph RAG as the planned graph template (single engine)
-* Describe pattern-to-deployment mapping (starter-kit today; OpenShift-native later)
+* Record which template maps to which starter-kit path (serving details: ODH-ADR-0004)
 
 ## Non-Goals
 
@@ -31,6 +31,7 @@ Template choice determines composition (retrieve/generate), infrastructure (vect
 * Alternate Graph RAG engines or dual-engine bake-offs
 * Detailed pipeline parameter tables for simple-RAG presets (see ODH-ADR-0002)
 * Full pattern.json field reference (see ODH-ADR-0004)
+* Helm, one-click Agent Sandbox, and env mapping for serving a pattern (see ODH-ADR-0004)
 
 ## How
 
@@ -47,10 +48,7 @@ A **RAG template** is the reusable workflow blueprint AutoRAG / ai4rag parameter
   - [Pipeline integration](#pipeline-integration)
   - [Pattern artifacts](#pattern-artifacts)
   - [Optimization parameters by template](#optimization-parameters-by-template)
-- [RAG application deployment](#rag-application-deployment)
-  - [Current: starter-kit deployment](#current-starter-kit-deployment)
-  - [Future: OpenShift-native deployment](#future-openshift-native-deployment)
-  - [Template-to-deployment mapping](#template-to-deployment-mapping)
+- [Template-to-deployment mapping](#template-to-deployment-mapping)
 - [Related](#related)
 
 ---
@@ -283,56 +281,18 @@ Start Graph RAG with **fixed** `retriever_type=hybrid_cypher` for smoke tests; t
 
 ---
 
-## RAG application deployment
+## Template-to-deployment mapping
 
-Once a RAG pattern is optimized and the index is built, serve it as an OpenShift agent. **Retrieve-and-generate contract** (MaaS chat + LangChain retrieve, Studio / Playground): [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation). **Per-pattern files:** [ODH-ADR-0004 — Pattern artifacts](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts).
+How to **serve** a pattern (notebook, zip + Helm, one-click Agent Sandbox, Studio OGX test): [ODH-ADR-0004 — Retrieve and generation](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation). Env map: [Pattern to agent env](./ODH-ADR-0004-rag-pattern-inference.md#pattern-to-agent-env). Helm: [Helm and BuildConfig](./ODH-ADR-0004-rag-pattern-inference.md#helm-and-buildconfig). One-click: [One-click Deployment](./ODH-ADR-0004-rag-pattern-inference.md#one-click-deployment).
 
-This section covers the **customizable OpenShift starter-kit** path only (unpack zip → Helm / `make deploy`). **One-click default RAG** (prebuilt `autorag-inference` image on Agent Sandbox): [ODH-ADR-0004 — Deployment](./ODH-ADR-0004-rag-pattern-inference.md#deployment).
-
-### Current: starter-kit deployment
-
-`rag_templates_optimization` emits **`agentic_template.zip`**: the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) parameterized from `pattern.json` `settings`. Deploy with Helm (`make deploy`) or run locally (`make run-app`). A manual `.env` / `values.yaml` copy remains a fallback.
-
-| Concern | Detail |
-|---------|--------|
-| **Orchestration** | LangGraph: route query → retrieve → generate → respond |
-| **API** | `POST /chat/completions` (streaming / non-streaming), `GET /health` |
-| **Deployment** | Helm chart → OpenShift |
-| **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) |
-
-| Pattern field | Starter-kit env var |
-|---------------|---------------------|
-| `settings.generation.model_id` | `MODEL_ID` |
-| `settings.generation.system_message_text` | (agent system prompt) |
-| `settings.generation.user_message_text` | (agent user prompt template) |
-| `settings.generation.context_template_text` | (chunk formatting) |
-| `settings.embedding.model_id` | `EMBEDDING_MODEL` |
-| `settings.embedding.embedding_params.embedding_dimension` | `EMBEDDING_DIMENSION` |
-| `settings.vector_store_binding.collection_name` | collection / `VECTOR_STORE_ID` |
-| `settings.vector_store_binding.provider_type` | `VECTOR_STORE_PROVIDER` |
-| `settings.retrieval.number_of_chunks` | (agent config / retriever `top_k`) |
-
-### Future: OpenShift-native deployment
-
-| Phase | Deployment model | Status |
-|-------|------------------|--------|
-| **Current (this ADR)** | Unpack `agentic_template.zip` → Helm / `make deploy` | Available |
-| **One-click default** | Dashboard `SandboxClaim` + prebuilt `autorag-inference` image | [ODH-ADR-0004 — Deployment](./ODH-ADR-0004-rag-pattern-inference.md#deployment) |
-| **Future** | OpenShift-native: pattern-driven operator or pipeline that provisions the agent, store binding, and route as managed resources | Future |
-
-Key capabilities to add:
-- **Helm form pre-fill** — Dashboard reads `pattern.json` / zip and pre-fills `make deploy` values (one-click default app is [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#deployment), not Helm)
-- **Graph RAG agent templates** — LangGraph agents that use Neo4j Cypher retrievers instead of simple vector retrieval
-- **Scaling and lifecycle** — horizontal pod autoscaling, health probes, rolling updates tied to re-indexed patterns
-
-### Template-to-deployment mapping
+This ADR only records **which template** maps to which starter-kit path.
 
 | Template | Starter-kit path | Notes |
 |----------|-------------------|-------|
 | **Simple RAG** | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via **`agentic_template.zip`** | Shipping today; runtime contract in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation) |
 | **Neo4j Graph RAG** | New starter-kit template with `neo4j-graphrag` retrievers + LangGraph | Requires Neo4j (`graph_db_secret_name`); not the simple-RAG zip |
 
-**Graph RAG** needs a new agent template that replaces vector-only retrieval with Neo4j Cypher retrievers.
+**Graph RAG** needs a new agent template that replaces vector-only retrieval with Neo4j Cypher retrievers. Helm form pre-fill, HPA, and an OpenShift-native operator remain future work; they do not change this mapping.
 
 ---
 
@@ -340,7 +300,7 @@ Key capabilities to add:
 
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — search-space dimensions for the current template
 - [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md) — optional prompt candidates injected into the current template
-- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — artifacts, `pattern.json`, retrieve / generate, one-click Agent Sandbox, Studio Playground
+- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — artifacts, `pattern.json`, retrieve / generate, Helm, one-click Agent Sandbox, Studio OGX test
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — benchmark metrics
 - [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS HPO wiring
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
@@ -348,4 +308,4 @@ Key capabilities to add:
 - [neo4j-graphrag — KG Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)
 - Optional orchestration: [LangGraph + Neo4j](https://neo4j.com/blog/developer/neo4j-graphrag-workflow-langchain-langgraph/)
 - [Agentic starter-kits](https://github.com/red-hat-data-services/agentic-starter-kits) — deployment templates for RAG agents
-- [Agentic RAG template](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) — LangGraph-based RAG agent (current deployment path)
+- [Agentic RAG template](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) — LangGraph-based RAG agent (simple-RAG zip)

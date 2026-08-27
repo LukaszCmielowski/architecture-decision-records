@@ -31,8 +31,8 @@ MaaS is the RHOAI platform surface for listing and invoking chat-capable models 
 
 ## Non-Goals
 
-* Agentic RAG app deployment on OpenShift ([RHOAIENG-79226](https://redhat.atlassian.net/browse/RHOAIENG-79226); [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md#rag-application-deployment))
-* Pattern artifact inventory, `pattern.json` schema, and Studio retrieve-and-generate ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md))
+* Agentic RAG app deployment on OpenShift ([RHOAIENG-79226](https://redhat.atlassian.net/browse/RHOAIENG-79226); [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation))
+* Pattern artifact inventory, `pattern.json` schema, and GenAI Studio OGX test path ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md))
 * Connection key catalogs ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#connections))
 * Changing evaluation metric definitions ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md))
 
@@ -98,7 +98,7 @@ GAM selection, pattern emission, and metric backends remain as in [ODH-ADR-0002]
 
 | Work | Ticket / note |
 |------|----------------|
-| Agentic RAG deployment from patterns | [RHOAIENG-79226](https://redhat.atlassian.net/browse/RHOAIENG-79226) — [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md#rag-application-deployment) |
+| Agentic RAG deployment from patterns | [RHOAIENG-79226](https://redhat.atlassian.net/browse/RHOAIENG-79226) — [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation) |
 | Align pipeline Connections with MaaS / vector-DB / graph-DB | Done (2026-08-26) — [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#connections) |
 
 ---
@@ -107,7 +107,7 @@ GAM selection, pattern emission, and metric backends remain as in [ODH-ADR-0002]
 
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) — parent AutoRAG architecture
 - [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters and search space
-- [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json`, retrieve / generate, Studio
+- [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json`, retrieve / generate, Studio OGX test
 - [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metrics and judge
 - [ODH-ADR-0006-prompt-tuning](./ODH-ADR-0006-prompt-tuning.md) — DSPy pre-check (shares MaaS chat/judge path)
 - [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) — MaaS integration for AutoRAG HPO
