@@ -308,40 +308,6 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 6. **Run locally:** `make run-app` or `make run-cli`.
 7. **Deploy a custom image:** [Helm and BuildConfig](#helm-and-buildconfig). Default (unedited) app: [One-click Deployment](#one-click-deployment).
 
-#### Pattern to agent env
-
-Written into `.env` / `values.yaml` when the zip is emitted. One-click `SandboxClaim.spec.env` uses the same map.
-
-| `pattern.json` / Connection | Agent env |
-|-----------------------------|-----------|
-| MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`) | `BASE_URL`, `API_KEY` (`BASE_URL` ends with `/v1`) |
-| `settings.generation.model_id` | `MODEL_ID` |
-| `settings.generation.system_message_text` | agent system prompt |
-| `settings.generation.user_message_text` | agent user prompt template |
-| `settings.generation.context_template_text` | chunk formatting |
-| `settings.embedding.model_id` | `EMBEDDING_MODEL` |
-| `settings.embedding.embedding_params.embedding_dimension` | `EMBEDDING_DIMENSION` |
-| `settings.vector_store_binding.collection_name` | `VECTOR_STORE_ID` |
-| `settings.vector_store_binding.provider_type` | `VECTOR_STORE_PROVIDER` (`milvus` or `pgvector`) |
-| `settings.retrieval.number_of_chunks` | retriever `top_k` |
-| `indexing.pipeline_spec.parameters.vector_db_secret_name` | Vector-DB Connection name (credentials from that Connection, not inlined) |
-
-`agent.yaml` required env: `API_KEY`, `BASE_URL`, `MODEL_ID`. Optionals include `EMBEDDING_*`, `VECTOR_STORE_*`, `PORT`, `CONTAINER_IMAGE`, `DOCS_TO_LOAD`. `VECTOR_STORE_PATH` is Milvus Lite for **local** kit use only. The upstream kit documents OGX + Ollama; AutoRAG parameterized zips and one-click use **MaaS** for chat and embeddings and LangChain against the project vector store.
-
-#### Helm and BuildConfig
-
-Custom (edited) starter-kit code is built into an image and deployed with the kit Helm chart (`agents/langgraph/deployment`). A manual `.env` / `values.yaml` copy remains a fallback if the zip was not pre-filled.
-
-1. Set `CONTAINER_IMAGE` in `.env` (registry path OpenShift can pull).
-2. **Build:** `make build` then `make push`, or in-cluster `make build-openshift` (BuildConfig; no local Podman). After an in-cluster build, set `CONTAINER_IMAGE` to the internal registry URL printed by the build.
-3. **Preview:** `make dry-run` (secrets redacted).
-4. **Deploy:** `make deploy`. Route host: `oc get route langgraph-agentic-rag`. Verify `GET /health` then `POST /chat/completions`.
-5. **Remove:** `make undeploy`.
-
-Optional OpenShift ServiceAccount auth (`AUTH_ENABLED`, TokenReview of `Authorization: Bearer`) is off by default. `GET /health` stays unauthenticated when auth is on. Helm upgrade with `--reuse-values` enables auth after the first deploy; see the kit README.
-
-The kit's `make deploy-openshell` / `Containerfile.openshell` (`OPENSHELL_SANDBOX_NAME`) is a related isolated-runtime experiment (egress policies, `playground-sandbox`). Product default serving is [one-click](#one-click-deployment) (Agent Sandbox + `autorag-inference`), not openshell.
-
 ### One-click Deployment
 
 **One-click** serving of the **default** RAG application: no zip unpack, no user image build. Dashboard (or API) starts a pod from the prebuilt **`autorag-inference`** image with env taken from `pattern.json` `settings` and project Connections. The image exposes the same contract as the kit: `POST /chat/completions`, `GET /health`.
@@ -365,9 +331,9 @@ This is the default-app path. Edited starter-kit code uses [Helm and BuildConfig
 
 GenAI Studio is **not** a consumer of the agent contract (`POST /chat/completions` on `autorag-inference` or the starter-kit). It is an interactive **test** path: AutoRAG Dashboard materializes an AgentProfile from `pattern.json`, and Studio runs retrieve-and-generate on its **OGX** backend.
 
-OGX is a different stack from MaaS + LangChain (notebook) and from LangGraph FastAPI (zip / one-click). Answers can differ from those paths even with the same `pattern.json`. That is expected. Studio chat is not a substitute for benchmark evaluation ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)).
+OGX is a different stack from MaaS + LangChain (notebook) and from LangGraph FastAPI (zip / one-click). Answers can differ from those paths even with the same `pattern.json`. That is expected.
 
-Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)). Dashboard copies **vector-store, retrieval, and generation** from `pattern.json` into that profile (not retrieval-only):
+Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)). Dashboard copies **vector-store, retrieval, and generation** from `pattern.json` into that profile:
 
 | `pattern.json` | AgentProfile |
 |----------------|--------------|
@@ -380,8 +346,6 @@ Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlass
 2. User selects a pattern and (if needed) runs [index building](#index-building).
 3. AutoRAG Dashboard persists an AgentProfile (ConfigMap) from the fields above.
 4. The AgentProfile is opened in Studio and wired to Studio's OGX backend.
-
-Studio does not create an Agent Sandbox, does not unpack `agentic_template.zip`, and does not call the one-click `/chat/completions` API. 
 
 ---
 
