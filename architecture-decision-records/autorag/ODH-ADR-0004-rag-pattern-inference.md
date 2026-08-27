@@ -40,14 +40,13 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 
 - [Optimization pipeline](#optimization-pipeline)
 - [Pattern artifacts](#pattern-artifacts)
-- [pattern.json schema](#patternjson-schema)
-  - [Target schema](#target-schema)
-- [Example pattern.json](#example-patternjson)
+- [pattern.json](#patternjson-schema)
+  - [Example pattern.json](#example-patternjson)
 - [Retrieve and generation](#retrieve-and-generation)
   - [Inference notebook](#inference-notebook)
   - [Agentic Starter-kit](#agentic-starter-kit)
-  - [Deployment](#deployment)
-  - [Playground integration (test the pattern)](#playground-integration-test-the-pattern)
+  - [One-click Deployment](#deployment)
+  - [Playground integration](#playground-integration-test-the-pattern)
 - [Index building](#index-building)
 - [Related](#related)
 
@@ -74,9 +73,7 @@ Canonical per-pattern inventory. Sibling ADRs link here instead of repeating thi
 
 ---
 
-## pattern.json schema
-
-### Target schema
+## pattern.json
 
 ```text
 pattern.json
@@ -114,7 +111,7 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
 
 ---
 
-## Example pattern.json
+### Example pattern.json
 
 ```json
 {
@@ -321,7 +318,7 @@ Chat payload (streaming or not): `{"messages": [{"role": "user", "content": "<qu
 
 The upstream kit still documents local OGX + Ollama. AutoRAG parameterized zips use **MaaS** for chat and embeddings and LangChain against the project vector store.
 
-### Deployment
+### One-click Deployment
 
 **One-click** serving of the **default** RAG application: no zip unpack, no user image build. Dashboard (or API) starts a pod from the prebuilt **`autorag-inference`** image with env taken from `pattern.json` `settings` and project Connections. The image exposes the same contract as the kit: `POST /chat/completions`, `GET /health`.
 
@@ -340,22 +337,20 @@ Runtime is [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) (SIG Apps): 
 
 This is the default-app path. Edited starter-kit code still uses Helm ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md#rag-application-deployment)). The kit's `make deploy-openshell` / `Containerfile.openshell` (`OPENSHELL_SANDBOX_NAME`) is a related isolated-runtime experiment (egress policies, `playground-sandbox`); product one-click is Agent Sandbox + `autorag-inference`.
 
-### Playground integration (test the pattern)
+### GenAI Studio integration
 
-Playground is how a user **tests** a pattern with chat without treating the zip as the primary UX. It does not replace benchmark evaluation ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)). Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)).
+Playground is how a user **tests** a pattern with chat. Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)).
+
+**Note**: that's just for test purposes - the results returned by the test endpoint can differ from one-click deployment or custom deployment based on agent template source code modification.
+
 
 **Studio / Dashboard (product)**
 
-1. Pipeline stores `pattern.json` and `agentic_template.zip` under the pattern subdirectory.
+1. Pipeline stores `pattern.json` under the pattern subdirectory.
 2. User selects a pattern and (if needed) runs [index building](#index-building).
-3. Studio persists an AgentProfile (ConfigMap) from `pattern.json` `settings` and wires Playground to a live retrieve-and-generate endpoint: the one-click [Deployment](#deployment) sandbox, or an already-routed starter-kit agent.
-4. Chat uses `POST /chat/completions` with streaming; health via `GET /health`. Runtime follows `settings` (generation templates + vector-store binding). Unpacking the zip is optional (customize later), not required to chat.
-
-**In the starter-kit (developer)**
-
-- `GET /` serves `playground/` HTML when `AUTH_ENABLED` is false (`make run-app`, default port 8000).
-- After OpenShift Helm deploy, the same HTML is on the agent Route when auth is off.
-- `playground-sandbox/app.py` (`make playground-sandbox`) is a Flask UI on port 5002 for a sandbox-routed agent: it discovers the agent Route (kit default `openshell-rag-agent`) and proxies `/chat/completions` with the caller ServiceAccount token.
+3. AutoRAG Dashboard persists an AgentProfile (ConfigMap) from `pattern.json` (vector store and retrieval parameters).
+4. The AgentProfile is opened in the Studio and wired to the Studio's backend.
+  
 
 ---
 
