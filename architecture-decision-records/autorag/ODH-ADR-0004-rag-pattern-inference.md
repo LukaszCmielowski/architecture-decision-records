@@ -345,8 +345,6 @@ Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlass
 3. AutoRAG Dashboard persists an AgentProfile (ConfigMap) from the fields above.
 4. The AgentProfile is opened in Studio and wired to Studio's OGX backend.
 
-Studio does not create an Agent Sandbox, does not unpack `agentic_template.zip`, and does not call the one-click `/chat/completions` API.
-
 ---
 
 ## Index building
