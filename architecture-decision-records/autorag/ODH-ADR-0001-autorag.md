@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-188](https://redhat.atlassian.net/browse/RHAISTRAT-188) |
-| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md) · [ODH-ADR-0007](./ODH-ADR-0007-maas-support.md) |
+| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md) · [ODH-ADR-0007](./ODH-ADR-0007-maas-support.md) · [ODH-ADR-0008](./ODH-ADR-0008-mlflow-integration.md) |
 
 ## What
 
@@ -64,7 +64,7 @@ AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **doc
 | **MLflow** | Optional experiment tracking, metrics, and tracing when enabled at the project level |
 | **RHOAI Connections** | Secure, namespace-scoped credentials for data sources and platform endpoints |
 
-Operational detail for each layer (parameter names, search-space dimensions, metric backends, MaaS integration) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0007).
+Operational detail for each layer (parameter names, search-space dimensions, metric backends, MaaS integration, MLflow) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0008).
 
 ### Lifecycle Phases
 
@@ -122,20 +122,15 @@ When optional constraints are omitted, AutoRAG applies defaults or explores the 
 
 ### Artifacts
 
-Each optimization run produces run-level and per-pattern artifacts. Per-pattern content is consolidated in **`pattern.json`** — the authoritative pattern record.
+Each optimization run produces run-level and per-pattern artifacts. **File names, layout, and `pattern.json` schema:** [ODH-ADR-0004 — Pattern artifacts](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). Evaluation row schema: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md).
 
-| Artifact category | Scope | Role |
-| ----------------- | ----- | ---- |
-| **Pattern record** (`pattern.json`) | Per pattern | Optimized settings, indexing workflow spec, evaluation summary |
-| **Evaluation detail** | Per pattern | Per-benchmark-row scores and retrieved context (audit and debugging) |
-| **Agentic template** (`agentic_template.zip`) | Per pattern | Parameterized agentic starter-kit for Studio / deploy ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#genai-studio-flow)) |
-| **Workflow notebooks** | Per pattern | Parameterized indexing and inference notebooks |
-| **Run output** | Per run | Execution status and logs |
-| **Experiment summary** | Per run | Data prep, search space, leaderboard, links to patterns |
+At the architectural level:
 
-Schema, field definitions, and examples: [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md), [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md).
-
-📝 **Note:** Indexing may be executed via managed pipeline or notebook workflows; both are parameterized from the pattern record. Deploy uses **`agentic_template.zip`** emitted with each pattern.
+| Concern | Role |
+| -------- | ---- |
+| **Optimize** | Emit portable RAG patterns (settings, indexing spec, evaluation) |
+| **Index** | Full-corpus indexing from the pattern record (managed pipeline or notebook) |
+| **Infer / deploy** | Retrieve-and-generate from `settings` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)): notebook, Playground, one-click Agent Sandbox, or zip; custom Helm from `agentic_template.zip` ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md#rag-application-deployment)) |
 
 ### Scope (Tech Preview)
 
@@ -207,6 +202,7 @@ Specific parameter names, presets, retrieval modes, and metric backends are deta
   * [ODH-ADR-0005 — Pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
   * [ODH-ADR-0006 — Prompt tuning](./ODH-ADR-0006-prompt-tuning.md)
   * [ODH-ADR-0007 — MaaS support](./ODH-ADR-0007-maas-support.md)
+  * [ODH-ADR-0008 — MLflow integration](./ODH-ADR-0008-mlflow-integration.md)
 * [AutoRAG component index](../../documentation/components/autorag/README.md)
 
 ## Reviews

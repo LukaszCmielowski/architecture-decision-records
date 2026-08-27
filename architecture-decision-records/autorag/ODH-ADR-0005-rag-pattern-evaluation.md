@@ -87,7 +87,7 @@ On a fixed calibration subset, using answers from a reference RAG configuration:
 
 ## evaluation_results.json
 
-Each pattern subdirectory under **`rag_patterns/<pattern_name>/`** also contains **`evaluation_results.json`**: a JSON **array** with one object per benchmark row. Use it to inspect failures, compare retrieval quality across patterns, or audit judge scores — `pattern.json` → `evaluation.metrics[]` aggregates (`scores.mean`, `ci_low`, `ci_high`) are computed from `metrics[].score` across these rows. The same subdirectory holds `agentic_template.zip` and the indexing/inference notebooks ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
+Each pattern subdirectory under **`rag_patterns/<pattern_name>/`** contains **`evaluation_results.json`**: a JSON **array** with one object per benchmark row. Use it to inspect failures, compare retrieval quality across patterns, or audit judge scores — `pattern.json` → `evaluation.metrics[]` aggregates (`scores.mean`, `ci_low`, `ci_high`) are computed from `metrics[].score` across these rows. Sibling files in that subdirectory: [ODH-ADR-0004 — Pattern artifacts](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts).
 
 | Field | Description |
 |-------|-------------|

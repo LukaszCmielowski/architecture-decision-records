@@ -13,7 +13,7 @@
 
 ## What
 
-This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via MaaS (OpenAI-compatible chat completions) plus the LangChain vector store, and full-corpus index building through the managed documents indexing pipeline.
+This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via MaaS (OpenAI-compatible chat completions) plus the LangChain vector store, four consumption paths (inference notebook, starter-kit zip, one-click Agent Sandbox, Playground), and full-corpus index building through the managed documents indexing pipeline.
 
 ## Why
 
@@ -23,27 +23,31 @@ Optimized configurations must be portable across optimization, indexing, and inf
 
 * Define the target pattern.json schema (`settings`, `indexing`, `evaluation`; no `inference` block)
 * Document how `settings.generation` and `settings.retrieval` drive MaaS chat completions and LangChain retrieval
-* Document GenAI Studio / Playground retrieve-and-generate wiring from pattern artifacts
+* Document the inference notebook, parameterized starter-kit zip, one-click sandbox deploy, and Playground wiring
 * Document indexing.pipeline_spec for the managed documents-indexing-pipeline
 
 ## Non-Goals
 
 * Metric computation and judge calibration details (see ODH-ADR-0005)
 * Graph RAG pattern storage profiles beyond sketches in ODH-ADR-0003
-* OpenShift-native operator deployment of agents (future work referenced in ODH-ADR-0003)
+* Helm / BuildConfig deploy of a user-edited starter-kit (see ODH-ADR-0003)
 
 ## How
 
-This page describes **AutoRAG patterns** after optimization: the **`pattern.json`** schema, **retrieve and generation** via **MaaS** and the pattern's vector-store binding, and **index building** into the production vector store.
+This page describes **AutoRAG patterns** after optimization: the **`pattern.json`** schema, **retrieve and generation** via **MaaS** and the pattern's vector-store binding (notebook, starter-kit zip, one-click Agent Sandbox, Playground), and **index building** into the production vector store.
 
 ## Table of contents
 
 - [Optimization pipeline](#optimization-pipeline)
+- [Pattern artifacts](#pattern-artifacts)
 - [pattern.json schema](#patternjson-schema)
   - [Target schema](#target-schema)
 - [Example pattern.json](#example-patternjson)
 - [Retrieve and generation](#retrieve-and-generation)
-  - [GenAI Studio flow](#genai-studio-flow)
+  - [Inference notebook](#inference-notebook)
+  - [Agentic Starter-kit](#agentic-starter-kit)
+  - [Deployment](#deployment)
+  - [Playground integration (test the pattern)](#playground-integration-test-the-pattern)
 - [Index building](#index-building)
 - [Related](#related)
 
@@ -55,11 +59,17 @@ The **[`documents_rag_optimization_pipeline`](https://github.com/opendatahub-io/
 
 Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipeline spec), and **`evaluation`** results. Index building processes the **full document corpus** into the vector store the pattern queries at inference time. Consumers assemble chat completions from `settings.generation`; they do **not** read an `inference` / `responses_template` object.
 
+---
+
+## Pattern artifacts
+
+Canonical per-pattern inventory. Sibling ADRs link here instead of repeating this table. Row-level score schema: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson). Custom Helm / zip deploy: [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md#rag-application-deployment). One-click default app: [Deployment](#deployment). MLflow pointers: [ODH-ADR-0008](./ODH-ADR-0008-mlflow-integration.md).
+
 | Artifact | Purpose |
 |----------|---------|
 | `pattern.json` | Authoritative record: `name`, `settings`, `indexing`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
-| `agentic_template.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for this pattern (Studio / deploy) |
-| `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks for the pattern |
+| `agentic_template.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for IDE work and Helm (`make deploy`). One-click serving uses the prebuilt `autorag-inference` image, not this zip. |
+| `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks: full-corpus index vs retrieve-and-generate with a sample query |
 | `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson)) |
 
 ---
@@ -255,59 +265,97 @@ Assemble the chat request from **`settings.generation`**:
 | `context_template_text` | Per-chunk formatting (`{doc_number}`, `{document}`) |
 | `user_message_text` | User message (`{reference_documents}`, `{question}`) |
 
-**Python (generation body after retrieval):**
+Retrieve chunks first (LangChain adapter + `settings.retrieval` / `settings.vector_store_binding`), then pass chunk texts into generation. Consumers can do that in four ways, all parameterized from the same `pattern.json` `settings`. The full-corpus index must exist first ([Index building](#index-building)).
 
-```python
-import json, os
-from pathlib import Path
-import requests
+| Path | Audience | Intent |
+|------|----------|--------|
+| [Inference notebook](#inference-notebook) | Data scientist | Inspect retrieve → generate in Jupyter with a sample query |
+| [Agentic Starter-kit](#agentic-starter-kit) | Developer | Download zip, customize code, `make run-app` / Helm `make deploy` |
+| [Deployment](#deployment) | Operator / Dashboard | One-click default RAG: prebuilt `autorag-inference` image on [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) |
+| [Playground](#playground-integration-test-the-pattern) | End user | Chat against a live retrieve-and-generate endpoint to smoke-test the pattern |
 
-def format_context(pattern: dict, documents: list[str]) -> str:
-    tmpl = pattern["settings"]["generation"]["context_template_text"]
-    return "\n\n".join(
-        tmpl.format(doc_number=i, document=doc)
-        for i, doc in enumerate(documents, start=1)
-    )
+### Inference notebook
 
-def chat_completions_body(pattern: dict, question: str, documents: list[str]) -> dict:
-    gen = pattern["settings"]["generation"]
-    user = gen["user_message_text"].format(
-        reference_documents=format_context(pattern, documents),
-        question=question,
-    )
-    return {
-        "model": gen["model_id"],
-        "temperature": gen["temperature"],
-        "max_completion_tokens": gen["max_completion_tokens"],
-        "messages": [
-            {"role": "system", "content": gen["system_message_text"]},
-            {"role": "user", "content": user},
-        ],
-    }
+`inference_notebook.ipynb` sits next to `pattern.json` under `rag_patterns/<pattern_name>/`. It is for **inspecting** retrieve-and-generate in the workbench. It is not a server: it does not start FastAPI, Helm, or a sandbox. Distinct from `indexing_notebook.ipynb`, which builds the full-corpus index.
 
-def generate(pattern_path: Path, question: str, documents: list[str]) -> dict:
-    pattern = json.loads(pattern_path.read_text())
-    base = os.environ["MAAS_BASE_URL"].rstrip("/")
-    r = requests.post(
-        f"{base}/v1/chat/completions",
-        json=chat_completions_body(pattern, question, documents),
-        headers={"Authorization": f"Bearer {os.environ['MAAS_API_KEY']}"},
-        timeout=120,
-    )
-    r.raise_for_status()
-    return r.json()
-```
+The notebook is instantiated from a template and pre-filled from `pattern.json`. Typical cells:
 
-Retrieve chunks first (LangChain adapter + `settings.retrieval` / `settings.vector_store_binding`), then pass chunk texts into `generate`.
+1. Load `pattern.json` and the MaaS / vector-DB Connections (`MAAS_BASE_URL`, `MAAS_API_KEY`, `vector_db_secret_name`). Secrets stay in Connections; they are not inlined in the notebook.
+2. Bind the LangChain vector store from `settings.vector_store_binding` (`provider_type`, `collection_name`).
+3. Run a **sample query** (a placeholder, or a row from the optimization benchmark, that the user can replace).
+4. Retrieve top-k chunks using `settings.retrieval` (`number_of_chunks`, `search_mode`, ranker fields).
+5. Format context with `settings.generation.context_template_text` (`{doc_number}`, `{document}`).
+6. Call MaaS `POST /v1/chat/completions` with `system_message_text`, `user_message_text` (`{reference_documents}`, `{question}`), `model_id`, `temperature`, and `max_completion_tokens`.
+7. Display the answer and retrieved chunks.
 
-### GenAI Studio flow
+### Agentic Starter-kit
 
-Studio / Playground persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)). `agentic_template.zip` is the deployable starter-kit bundle for that pattern.
+`agentic_template.zip` is a per-pattern copy of the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag), filled from `pattern.json` `settings`. It is the **downloadable, editable** agent: LangGraph orchestration in `src/agentic_rag`, FastAPI in `main.py` (`POST /chat/completions`, `GET /health`), in-app playground at `GET /` (`playground/`), plus `Makefile`, `Dockerfile`, `agent.yaml`, `values.yaml`, and `.env.example`.
 
-1. Pipeline stores `pattern.json` and `agentic_template.zip` under the pattern subdirectory
-2. User selects a pattern in Studio / Dashboard
-3. Studio persists the AgentProfile (ConfigMap) and wires Playground / inference from `pattern.json` `settings` (and optionally unpacks `agentic_template.zip`)
-4. Runtime retrieve-and-generate follows the pattern’s `settings` (generation templates + vector-store binding)
+Chat payload (streaming or not): `{"messages": [{"role": "user", "content": "<question>"}], "stream": true|false}`. `GET /health` stays unauthenticated even when OpenShift ServiceAccount auth is on (`AUTH_ENABLED`; TokenReview of `Authorization: Bearer`). Auth is **off** by default so local `make run-app` and the kit playground work without tokens.
+
+**User flow**
+
+1. Download `agentic_template.zip` from the pattern subdirectory.
+2. Open it in an IDE (workbench or local).
+3. **Setup:** `make init` (`.env` from `.env.example`; AutoRAG already writes pattern values), `make env` (`uv`, Python 3.12).
+4. Point `BASE_URL` / `API_KEY` at the project MaaS Connection (`BASE_URL` must end with `/v1`). The production collection already exists; do **not** run the kit's sample `make load-docs` / `data/load_documents.py` against it (those load `DOCS_TO_LOAD` into a new local collection).
+5. **Tweak:** edit `src/agentic_rag` (graph, tools, prompts), `main.py`, or `.env`.
+6. **Run:** `make run-app` (uvicorn on `PORT`, default 8000) or `make run-cli`. Optional MLflow tracing when `MLFLOW_TRACKING_URI` is set ([ODH-ADR-0008](./ODH-ADR-0008-mlflow-integration.md)).
+7. **Deploy a custom image:** Helm / BuildConfig as in [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md#rag-application-deployment) (`make build` or `make build-openshift`, then `make deploy` / `make dry-run` / `make undeploy`). One-click default image is [Deployment](#deployment), not this path.
+
+**Pattern → starter-kit env** (written into `.env` / `values.yaml` when the zip is emitted):
+
+| `pattern.json` / Connection | Starter-kit env |
+|-----------------------------|-----------------|
+| `settings.generation.model_id` | `MODEL_ID` |
+| MaaS Connection | `BASE_URL`, `API_KEY` |
+| `settings.generation` prompt fields | agent system / user / context templates |
+| `settings.embedding.model_id` | `EMBEDDING_MODEL` |
+| `settings.embedding.embedding_params.embedding_dimension` | `EMBEDDING_DIMENSION` |
+| `settings.vector_store_binding.collection_name` | `VECTOR_STORE_ID` |
+| `settings.vector_store_binding.provider_type` | `VECTOR_STORE_PROVIDER` (`milvus` or `pgvector`) |
+| `settings.retrieval.number_of_chunks` | retriever `top_k` |
+
+`agent.yaml` required env: `API_KEY`, `BASE_URL`, `MODEL_ID`. Optionals include `EMBEDDING_*`, `VECTOR_STORE_*`, `PORT`, `CONTAINER_IMAGE`, `DOCS_TO_LOAD`. `VECTOR_STORE_PATH` is Milvus Lite for **local** kit use only; production retrieve uses the experiment's vector-DB Connection (`vector_db_secret_name`), not a Lite file.
+
+The upstream kit still documents local OGX + Ollama. AutoRAG parameterized zips use **MaaS** for chat and embeddings and LangChain against the project vector store.
+
+### Deployment
+
+**One-click** serving of the **default** RAG application: no zip unpack, no user image build. Dashboard (or API) starts a pod from the prebuilt **`autorag-inference`** image with env taken from `pattern.json` `settings` and project Connections. The image exposes the same contract as the kit: `POST /chat/completions`, `GET /health`.
+
+Runtime is [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) (SIG Apps): a Kubernetes-native singleton with a stable hostname, optional persistent storage, hibernation (pause idle compute; resume on network activity), and scheduled deletion (TTL). Isolation is a cluster choice (standard containers, gVisor, or Kata) via `RuntimeClass`; AutoRAG does not ship a custom operator for this path.
+
+| Object | API | AutoRAG use |
+|--------|-----|-------------|
+| [`SandboxTemplate`](https://agent-sandbox.sigs.k8s.io/docs/getting_started/overview/) | `extensions.agents.x-k8s.io` | Reusable pod spec: `autorag-inference` image, ports, security context. `envVarsInjectionPolicy` must be `Allowed` or `Overrides` so a claim can set pattern env. |
+| `SandboxWarmPool` (optional) | `extensions.agents.x-k8s.io` | Pre-warms pods from the template for fast **adoption** when the claim sets **no** extra env. |
+| `SandboxClaim` | `extensions.agents.x-k8s.io` | Dashboard/user request. Injects pattern env via `spec.env` (`MODEL_ID`, `BASE_URL`, `API_KEY`, `EMBEDDING_*`, `VECTOR_STORE_*`). |
+| `Sandbox` | `agents.x-k8s.io` | Bound instance. Stable identity for Playground and `/chat/completions`. |
+
+**Env vs warm pool:** Agent Sandbox bakes env into the Pod at create time. A `SandboxClaim` that sets `spec.env` **cannot adopt** a warm-pool pod; the controller cold-starts from the template ([API: `SandboxClaim.spec.env`](https://agent-sandbox.sigs.k8s.io/docs/api/)). AutoRAG MVP accepts that: pattern settings differ per claim, so one-click is “prebuilt image + cold start from template,” still cheaper than `make build` / Helm. A later design can keep a generic image in the warm pool and supply `pattern.json` after start (no per-claim `spec.env`) if millisecond adopt is required.
+
+**Flow:** user selects a pattern (index already built) → Dashboard creates a `SandboxClaim` against the AutoRAG inference template → controller creates a `Sandbox` from the template with claim env + MaaS / vector-DB secrets → `GET /health` then `POST /chat/completions`. Python and Go [clients](https://agent-sandbox.sigs.k8s.io/docs/getting_started/overview/) can claim the same template without the UI.
+
+This is the default-app path. Edited starter-kit code still uses Helm ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md#rag-application-deployment)). The kit's `make deploy-openshell` / `Containerfile.openshell` (`OPENSHELL_SANDBOX_NAME`) is a related isolated-runtime experiment (egress policies, `playground-sandbox`); product one-click is Agent Sandbox + `autorag-inference`.
+
+### Playground integration (test the pattern)
+
+Playground is how a user **tests** a pattern with chat without treating the zip as the primary UX. It does not replace benchmark evaluation ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)). Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)).
+
+**Studio / Dashboard (product)**
+
+1. Pipeline stores `pattern.json` and `agentic_template.zip` under the pattern subdirectory.
+2. User selects a pattern and (if needed) runs [index building](#index-building).
+3. Studio persists an AgentProfile (ConfigMap) from `pattern.json` `settings` and wires Playground to a live retrieve-and-generate endpoint: the one-click [Deployment](#deployment) sandbox, or an already-routed starter-kit agent.
+4. Chat uses `POST /chat/completions` with streaming; health via `GET /health`. Runtime follows `settings` (generation templates + vector-store binding). Unpacking the zip is optional (customize later), not required to chat.
+
+**In the starter-kit (developer)**
+
+- `GET /` serves `playground/` HTML when `AUTH_ENABLED` is false (`make run-app`, default port 8000).
+- After OpenShift Helm deploy, the same HTML is on the agent Route when auth is off.
+- `playground-sandbox/app.py` (`make playground-sandbox`) is a Flask UI on port 5002 for a sandbox-routed agent: it discovers the agent Route (kit default `openshell-rag-agent`) and proxies `/chat/completions` with the caller ServiceAccount token.
 
 ---
 
@@ -332,9 +380,13 @@ Index building populates the production vector store via the managed **`document
 ## Related
 
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
-- [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
+- [RAG templates](./ODH-ADR-0003-rag-templates.md) — Helm / `make deploy` of a customized zip; planned Graph RAG
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, presets, chunking, retrieval
-- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS and vector-DB Connections
+- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS HPO wiring
+- [MLflow integration](./ODH-ADR-0008-mlflow-integration.md) — tracking pointers to pattern artifacts
 - [RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608) — AgentProfile schema for Gen AI Studio
 - [AgentProfile schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca) — ConfigMap / `profile.yaml` example and field definitions
+- [Agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) — zip generation template
+- [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) — one-click `Sandbox` / `SandboxTemplate` / `SandboxClaim` / `SandboxWarmPool`
+- [Agent Sandbox API](https://agent-sandbox.sigs.k8s.io/docs/api/) — `SandboxClaim.spec.env` cold-start behavior
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)

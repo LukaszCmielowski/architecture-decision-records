@@ -66,7 +66,7 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `graph_db_secret_name` | `str` | `""` | Graph DB Connection for the **Graph RAG** template. Empty for simple RAG. Required when Graph RAG is selected ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). v1 backend: **Neo4j** (`NEO4J_*` keys). |
 | `embedding_models` | `list[str]` | (required) | Non-empty list of embedding model ids for the search space. MaaS does not expose type metadata, so models cannot be inferred. |
 | `generation_models` | `list[str]` | (required) | Non-empty list of generation / foundation model ids for the search space. Same reason as `embedding_models`. |
-| `optimization_metric` | `str` | `overall_score` | GAM objective: `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`. The first three are deterministic Unitxt metrics. `answer_relevance` (LLM judge) is always computed; it drives ranking only when selected, or as part of `overall_score`. |
+| `optimization_metric` | `str` | `overall_score` | GAM objective. Allowed: `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`. Backends, judge selection, and score fields: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md). |
 | `optimization_max_rag_patterns` | `int` | `8` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
 

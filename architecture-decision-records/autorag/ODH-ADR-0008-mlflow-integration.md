@@ -24,7 +24,7 @@ AutoRAG pipelines evaluate multiple RAG patterns (chunking, embedding, retrieval
 * Align with AutoML's KFP + MLflow integration model: opt-in via `MLFLOW_TRACKING_URI`, parent/child run hierarchy, explicit API calls
 * Log one nested child run per RAG pattern with params (chunking, embedding, retrieval, generation settings) and aggregate evaluation metrics
 * Implement mandatory per-benchmark tracing when MLflow is enabled: one trace per benchmark request with `autorag.retrieval`, `autorag.generation`, and `autorag.evaluation` spans
-* Log pointers to KFP artifacts (`pattern.json`, `evaluation_results.json`, `agentic_template.zip`, notebooks) without copying data into MLflow
+* Log pointers to KFP artifacts listed in [ODH-ADR-0004 — Pattern artifacts](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts) without copying data into MLflow
 
 ## Non-Goals
 
@@ -42,7 +42,7 @@ When MLflow integration is enabled at the project level, OpenShift AI injects th
 
 ### KFP artifacts produced by the pipeline
 
-These paths represent the **RHOAI 3.5+** artifact structure and are the **source of truth** for what MLflow logging attaches to.
+These paths represent the **RHOAI 3.5+** artifact structure. **Per-pattern file inventory:** [ODH-ADR-0004 — Pattern artifacts](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). MLflow logs **pointers** to those files, not copies.
 
 | Artifact / path role | Producing step | Layout and role |
 |---------------------|----------------|-----------------|
@@ -50,17 +50,7 @@ These paths represent the **RHOAI 3.5+** artifact structure and are the **source
 | **Discovered documents** | `documents_discovery` | Descriptor of corpus objects for extraction. |
 | **Extracted text** | `text_extraction` | Extracted document text (e.g. via **docling**) for ai4rag. |
 | **`search_space_prep_report`** | `search_space_preparation` | YAML-serialized **search space** after phase-one validation. |
-| **`rag_patterns`** (directory artifact) | `rag_templates_optimization` | One **subdirectory per pattern** (pattern name = folder name). Under each: **`pattern.json`**, **`evaluation_results.json`**, **`agentic_template.zip`**, **`indexing_notebook.ipynb`**, **`inference_notebook.ipynb`**. |
-
-**Per-pattern artifacts:**
-
-| Artifact | Type | Purpose |
-|----------|------|---------|
-| **`pattern.json`** | JSON | Consolidated pattern record: `settings` (chunking, embedding, retrieval, generation, vector-store binding), `indexing.pipeline_spec`, `evaluation` metrics, `iteration` / `duration_seconds`. Single source of truth for registration, deployment, and code generation. |
-| **`agentic_template.zip`** | ZIP | Parameterized agentic starter-kit for this pattern ([agentic_rag](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag)), filled from `pattern.json` `settings`. |
-| **`indexing_notebook.ipynb`** | Jupyter Notebook | Indexing notebook instantiated from templates, parameterized for this pattern. |
-| **`inference_notebook.ipynb`** | Jupyter Notebook | Inference notebook instantiated from templates, parameterized for this pattern. |
-| **`evaluation_results.json`** | JSON | Per-benchmark-row scores and I/O. |
+| **`rag_patterns`** (directory artifact) | `rag_templates_optimization` | One subdirectory per pattern. Contents: [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). |
 
 ### MLflow mapping model
 
@@ -75,7 +65,7 @@ One parent run per KFP pipeline execution; one nested child run per RAG pattern 
 | **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with MLflow `SpanType` where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for MaaS chat completions. |
 | **Params (child)** | From `pattern.json` `settings`: `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id` / prompt fields, `vector_store_binding` (`provider_type`, `collection_name`). |
 | **Metrics (child)** | From `pattern.json`: `duration_seconds`, `iteration`; from `evaluation.metrics[]`: `log_metric(name, scores.mean)` per entry; objective score from the entry with `optimization_metric: true` (logged as `final_score`). |
-| **Child Artifacts** | Pointers to KFP artifacts: `pattern.json`, `evaluation_results.json`, `agentic_template.zip`, `indexing_notebook.ipynb`, `inference_notebook.ipynb`. Logged as params containing artifact URIs/paths, not copied into MLflow. |
+| **Child Artifacts** | Pointers (URIs/paths) to the per-pattern files in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). Not copied into MLflow. |
 
 ### Implementation approach
 
@@ -175,6 +165,7 @@ Enable `mlflow.openai.autolog()` at component start so MaaS OpenAI-compatible ch
 * AutoML MLflow Integration ADR: [ODH-ADR-0004-mlflow-integration](../automl/ODH-ADR-0004-mlflow-integration.md)
 * AutoRAG ADR: [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 * AutoRAG optimization settings: [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md)
+* RAG pattern artifacts: [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts)
 * RAG pattern evaluation: [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
 * MLflow Tracking: [MLflow Tracking documentation](https://mlflow.org/docs/latest/tracking.html)
 * MLflow span types: [MLflow span types documentation](https://mlflow.org/docs/latest/genai/concepts/span#span-types)

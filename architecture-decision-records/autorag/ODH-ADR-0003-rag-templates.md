@@ -88,7 +88,7 @@ question
 | **Indexing** | Chunk → embed → write vector store ([experiment settings](./ODH-ADR-0002-experiment-settings.md)) |
 | **Retrieval** | One query; `number_of_chunks`, `search_mode` (`vector` / `keyword` / `hybrid`), optional ranker |
 | **Generation** | One LLM call with `system_message_text` / `user_message_text` / `context_template_text` over retrieved chunks |
-| **Inference export** | `pattern.json` `settings` — LangChain retrieval plus MaaS `/v1/chat/completions` assembled from `settings.generation` |
+| **Inference export** | `pattern.json` `settings` — retrieve-and-generate in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation) |
 | **Optimization** | GAM over chunking × embedding × retrieval × generation (and optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) candidates) |
 
 **Naming note:** ai4rag `hybrid` means dense + BM25 fused with RRF (or weighted fusion) over chunks. That is **not** Neo4j `HybridRetriever` / `HybridCypherRetriever` (vector + full-text, optionally plus Cypher).
@@ -260,7 +260,7 @@ AutoRAG / GAM should explore knobs that change **retrieval or generation quality
 
 | Template | Optimize (high value) | Optimize later / conditional | Usually **fix** (not GAM dims) |
 |----------|----------------------|------------------------------|----------------------------------|
-| **Current (simple) RAG** | `chunking.method` / `chunk_size` / `chunk_overlap`; `include_metadata` (hybrid); `embedding_model_id`; `search_mode`; `number_of_chunks`; hybrid `ranker_*`; `generation_model_id` + gen params (temp, max tokens); optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) candidates | Ranker strategy variants; embedding allow-list size; prompt candidate count | `vector_db_secret_name`, Docling preset (`speed`/`balanced`), corpus / `test_data`, MaaS Connection |
+| **Current (simple) RAG** | Search space in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md); optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) | Ranker / embedding allow-list / prompt candidate count | `vector_db_secret_name`, Docling preset, corpus / `test_data`, MaaS Connection |
 | **Neo4j Graph RAG** | **Query-time:** `retriever_type` (`hybrid_cypher` / `vector_cypher` / `text2cypher` / …), `top_k`, Cypher hop depth / `LIMIT`; **gen:** model + temperature | **Index-time:** `GraphSchema` strictness / entity types; embedding model; full-text vs vector index params | `storage_profile: neo4j_hybrid_only`, `graph_db_secret_name`, LangGraph on/off (orchestration, not core RAG score) |
 
 **Shared rules**
@@ -285,37 +285,20 @@ Start Graph RAG with **fixed** `retriever_type=hybrid_cypher` for smoke tests; t
 
 ## RAG application deployment
 
-Once a RAG pattern is optimized and the index is built, the pattern must be served behind a **production inference endpoint**. Today this uses the **agentic-starter-kit** deployment model; future work will extend this to OpenShift-native deployment.
+Once a RAG pattern is optimized and the index is built, serve it as an OpenShift agent. **Retrieve-and-generate contract** (MaaS chat + LangChain retrieve, Studio / Playground): [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation). **Per-pattern files:** [ODH-ADR-0004 — Pattern artifacts](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts).
+
+This section covers the **customizable OpenShift starter-kit** path only (unpack zip → Helm / `make deploy`). **One-click default RAG** (prebuilt `autorag-inference` image on Agent Sandbox): [ODH-ADR-0004 — Deployment](./ODH-ADR-0004-rag-pattern-inference.md#deployment).
 
 ### Current: starter-kit deployment
 
-The [`agentic-starter-kits`](https://github.com/red-hat-data-services/agentic-starter-kits) repository provides a LangGraph-based [Agentic RAG template](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) that wraps retrieval and generation into a deployable agent application.
-
-```text
-Optimized pattern (pattern.json + agentic_template.zip)
-   │
-   ├── settings.retrieval + vector_store_binding ──► LangChain retrieve
-   │
-   ├── settings.generation ────────────────────────► MaaS /v1/chat/completions
-   │     (system / user / context templates)
-   │
-   └── agentic_template.zip ───────────────────────► Deployed agent application
-         (parameterized agentic RAG starter-kit)         (container on OpenShift)
-```
-
-The starter-kit agent is a **LangGraph** application that:
+`rag_templates_optimization` emits **`agentic_template.zip`**: the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) parameterized from `pattern.json` `settings`. Deploy with Helm (`make deploy`) or run locally (`make run-app`). A manual `.env` / `values.yaml` copy remains a fallback.
 
 | Concern | Detail |
 |---------|--------|
-| **Orchestration** | LangGraph graph: route query → retrieve → generate → respond |
-| **Retrieval** | LangChain vector store (`vector_db_secret_name`) — Milvus or PGVector |
-| **Generation** | LLM via MaaS (`MAAS_BASE_URL`, `MAAS_API_KEY`) — same model from the pattern's `generation.model_id` |
+| **Orchestration** | LangGraph: route query → retrieve → generate → respond |
 | **API** | `POST /chat/completions` (streaming / non-streaming), `GET /health` |
-| **Configuration** | Environment variables sourced from `pattern.json` `settings`: `MODEL_ID`, `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, collection / provider |
-| **Deployment** | Helm chart → OpenShift (`make deploy`); local dev via `make run-app` |
-| **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) aligned with AutoML/AutoRAG tracking model |
-
-**Pattern → starter-kit wiring:** `rag_templates_optimization` emits **`agentic_template.zip`** per pattern — the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) parameterized from `pattern.json` `settings`. Dashboard / Studio can unpack the zip; a manual `.env` / `values.yaml` copy remains a fallback.
+| **Deployment** | Helm chart → OpenShift |
+| **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) |
 
 | Pattern field | Starter-kit env var |
 |---------------|---------------------|
@@ -331,29 +314,25 @@ The starter-kit agent is a **LangGraph** application that:
 
 ### Future: OpenShift-native deployment
 
-The starter-kit model serves as the initial deployment path. Future work will extend this to **OpenShift-native deployment** where optimized RAG patterns are deployed as first-class platform workloads:
-
 | Phase | Deployment model | Status |
 |-------|------------------|--------|
-| **Current** | Starter-kit: manual pattern → `.env` → `make deploy` / Helm chart | Available |
-| **Next** | Dashboard-driven: select pattern → auto-populate deployment form → deploy agent | Planned |
-| **Future** | OpenShift-native: pattern-driven operator or pipeline that provisions the agent, vector store binding, and route as managed resources | Future |
+| **Current (this ADR)** | Unpack `agentic_template.zip` → Helm / `make deploy` | Available |
+| **One-click default** | Dashboard `SandboxClaim` + prebuilt `autorag-inference` image | [ODH-ADR-0004 — Deployment](./ODH-ADR-0004-rag-pattern-inference.md#deployment) |
+| **Future** | OpenShift-native: pattern-driven operator or pipeline that provisions the agent, store binding, and route as managed resources | Future |
 
 Key capabilities to add:
-- **Automated pattern-to-deployment wiring** — Dashboard reads `pattern.json`, pre-fills deployment config
+- **Helm form pre-fill** — Dashboard reads `pattern.json` / zip and pre-fills `make deploy` values (one-click default app is [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#deployment), not Helm)
 - **Graph RAG agent templates** — LangGraph agents that use Neo4j Cypher retrievers instead of simple vector retrieval
 - **Scaling and lifecycle** — horizontal pod autoscaling, health probes, rolling updates tied to re-indexed patterns
 
 ### Template-to-deployment mapping
 
-Each RAG template produces a pattern with a different inference contract. The deployment mechanism must match:
+| Template | Starter-kit path | Notes |
+|----------|-------------------|-------|
+| **Simple RAG** | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via **`agentic_template.zip`** | Shipping today; runtime contract in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation) |
+| **Neo4j Graph RAG** | New starter-kit template with `neo4j-graphrag` retrievers + LangGraph | Requires Neo4j (`graph_db_secret_name`); not the simple-RAG zip |
 
-| Template | Inference contract | Starter-kit path | Notes |
-|----------|-------------------|-------------------|-------|
-| **Simple RAG** | `settings.generation` → MaaS `/v1/chat/completions` + LangChain retrieval | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via **`agentic_template.zip`** | Shipping today |
-| **Neo4j Graph RAG** | Neo4j retriever (`HybridCypherRetriever`, etc.) → `GraphRAG.search` → answer | New starter-kit template with `neo4j-graphrag` retrievers + LangGraph orchestration | Requires Neo4j connectivity; LangGraph orchestration natural fit |
-
-**Simple RAG** uses the existing `agentic_rag` starter-kit — retrieve from `settings.vector_store_binding` and generate from `settings.generation`. **Graph RAG** requires a new agent template that replaces vector-only retrieval with Neo4j Cypher retrievers.
+**Graph RAG** needs a new agent template that replaces vector-only retrieval with Neo4j Cypher retrievers.
 
 ---
 
@@ -361,9 +340,9 @@ Each RAG template produces a pattern with a different inference contract. The de
 
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — search-space dimensions for the current template
 - [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md) — optional prompt candidates injected into the current template
-- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json` schema and retrieve / generate
-- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — benchmark metrics (`faithfulness`, `answer_correctness`, …)
-- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS and vector-DB Connections
+- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — artifacts, `pattern.json`, retrieve / generate, one-click Agent Sandbox, Studio Playground
+- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — benchmark metrics
+- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS HPO wiring
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [neo4j-graphrag — User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)
 - [neo4j-graphrag — KG Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)
