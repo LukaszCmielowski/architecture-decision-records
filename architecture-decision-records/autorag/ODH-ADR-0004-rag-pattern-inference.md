@@ -56,7 +56,7 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 
 The **[`documents_rag_optimization_pipeline`](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** runs **`rag_templates_optimization`** to search RAG configurations and score each candidate on a benchmark (up to 1 GB document sample). Outputs land under **`rag_patterns/<pattern_subdir>/`** in DSPA storage (`<bucket>/<pipeline-name>/<run-id>/…`) plus a pipeline-wide HTML leaderboard.
 
-Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipeline spec), and **`evaluation`** results. Index building processes the **full document corpus** (union of `input_data_keys` locations) into the vector store the pattern queries at inference time. Consumers assemble chat completions from `settings.generation`; they do **not** read an `inference` / `responses_template` object.
+Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipeline spec), and **`evaluation`** results. The same `run_rag_optimization()` call in **ai4rag** writes notebooks and **`starter_kit.zip`** into that directory (see [Agentic Starter-kit](#agentic-starter-kit)). Index building processes the **full document corpus** (union of `input_data_keys` locations) into the vector store the pattern queries at inference time. Consumers assemble chat completions from `settings.generation`; they do **not** read an `inference` / `responses_template` object.
 
 ---
 
@@ -67,7 +67,7 @@ Canonical per-pattern inventory. Sibling ADRs link here instead of repeating thi
 | Artifact | Purpose |
 |----------|---------|
 | `pattern.json` | Authoritative record: `name`, `settings`, `indexing`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
-| `starter_kit.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for IDE work and Helm (`make deploy`). One-click serving uses the prebuilt `autorag-inference` image, not this zip. |
+| `starter_kit.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for IDE work and Helm (`make deploy`). Built by ai4rag from **importable package resources** (same mechanism as the notebooks). One-click serving uses the prebuilt `autorag-inference` image, not this zip. |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks: full-corpus index vs retrieve-and-generate with a sample query |
 | `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson)) |
 
@@ -289,7 +289,9 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 
 ### Agentic Starter-kit
 
-`starter_kit.zip` is a per-pattern copy of the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag), filled from `pattern.json` `settings`. It is the **downloadable, editable** agent: LangGraph orchestration in `src/agentic_rag`, FastAPI in `main.py` (`POST /chat/completions`, `GET /health`), in-app chat UI at `GET /` (`playground/`), plus `Makefile`, `Dockerfile`, `agent.yaml`, `values.yaml`, and `.env.example`. That `GET /` UI is local to the kit; it is not GenAI Studio.
+`starter_kit.zip` is the **downloadable, editable** agent: LangGraph orchestration in `src/agentic_rag`, FastAPI in `main.py` (`POST /chat/completions`, `GET /health`), in-app chat UI at `GET /` (`playground/`), plus `Makefile`, `Dockerfile`, Helm chart, and `.env.example`. That `GET /` UI is local to the kit; it is not GenAI Studio.
+
+**Generation.** ai4rag owns the kit as **package resources** (an importable file tree with placeholders), the same way it owns notebook templates. `run_rag_optimization()` copies that tree, fills placeholders from the pattern's `settings`, and writes **`starter_kit.zip`** next to `pattern.json`. There is no unpublished zip of the base kit. Layout and prompts stay aligned with the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag); ai4rag is the copy used at optimize time so filled settings match the zip. `rag_templates_optimization` stays a thin wrapper: no extra KFP component.
 
 | Concern | Detail |
 |---------|--------|
