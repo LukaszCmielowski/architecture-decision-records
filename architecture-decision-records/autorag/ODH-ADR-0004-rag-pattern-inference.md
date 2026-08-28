@@ -67,7 +67,7 @@ Canonical per-pattern inventory. Sibling ADRs link here instead of repeating thi
 | Artifact | Purpose |
 |----------|---------|
 | `pattern.json` | Authoritative record: `name`, `settings`, `indexing`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
-| `agentic_template.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for IDE work and Helm (`make deploy`). One-click serving uses the prebuilt `autorag-inference` image, not this zip. |
+| `starter_kit.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for IDE work and Helm (`make deploy`). One-click serving uses the prebuilt `autorag-inference` image, not this zip. |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks: full-corpus index vs retrieve-and-generate with a sample query |
 | `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson)) |
 
@@ -289,7 +289,7 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 
 ### Agentic Starter-kit
 
-`agentic_template.zip` is a per-pattern copy of the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag), filled from `pattern.json` `settings`. It is the **downloadable, editable** agent: LangGraph orchestration in `src/agentic_rag`, FastAPI in `main.py` (`POST /chat/completions`, `GET /health`), in-app chat UI at `GET /` (`playground/`), plus `Makefile`, `Dockerfile`, `agent.yaml`, `values.yaml`, and `.env.example`. That `GET /` UI is local to the kit; it is not GenAI Studio.
+`starter_kit.zip` is a per-pattern copy of the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag), filled from `pattern.json` `settings`. It is the **downloadable, editable** agent: LangGraph orchestration in `src/agentic_rag`, FastAPI in `main.py` (`POST /chat/completions`, `GET /health`), in-app chat UI at `GET /` (`playground/`), plus `Makefile`, `Dockerfile`, `agent.yaml`, `values.yaml`, and `.env.example`. That `GET /` UI is local to the kit; it is not GenAI Studio.
 
 | Concern | Detail |
 |---------|--------|
@@ -301,7 +301,7 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 
 **User flow**
 
-1. Download `agentic_template.zip` from the pattern subdirectory.
+1. Download `starter_kit.zip` from the pattern subdirectory.
 2. Open it in an IDE (workbench or local).
 3. **Setup:** `make init` (`.env` from `.env.example`; AutoRAG already writes pattern values), `make env` (`uv`, Python 3.12).
 4. Point `BASE_URL` / `API_KEY` at the project MaaS Connection (`BASE_URL` must end with `/v1`). The production collection already exists; do **not** run the kit's sample `make load-docs` / `data/load_documents.py` against it (those load `DOCS_TO_LOAD` into a new local collection).

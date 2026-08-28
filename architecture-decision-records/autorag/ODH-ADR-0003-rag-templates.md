@@ -289,7 +289,7 @@ This ADR only records **which template** maps to which starter-kit path.
 
 | Template | Starter-kit path | Notes |
 |----------|-------------------|-------|
-| **Simple RAG** | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via **`agentic_template.zip`** | Shipping today; runtime contract in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation) |
+| **Simple RAG** | [`agentic_rag`](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) via **`starter_kit.zip`** | Shipping today; runtime contract in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation) |
 | **Neo4j Graph RAG** | New starter-kit template with `neo4j-graphrag` retrievers + LangGraph | Requires Neo4j (`graph_db_secret_name`); not the simple-RAG zip |
 
 **Graph RAG** needs a new agent template that replaces vector-only retrieval with Neo4j Cypher retrievers. Helm form pre-fill, HPA, and an OpenShift-native operator remain future work; they do not change this mapping.
