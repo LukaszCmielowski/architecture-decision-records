@@ -2,18 +2,18 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-07-29 |
+| Date           | 2026-08-28 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHAISTRAT-1425](https://redhat.atlassian.net/browse/RHAISTRAT-1425) |
+| Tickets        | [RHAISTRAT-1425](https://redhat.atlassian.net/browse/RHAISTRAT-1425) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
 | Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
 
 ## What
 
-This ADR documents how AutoRAG / ai4rag scores RAG patterns during rag_templates_optimization: metric backends, judge-model selection, aggregates in pattern.json, and row-level evaluation_results.json.
+This ADR documents how AutoRAG / ai4rag scores RAG patterns during rag_templates_optimization: metric backends, judge-model selection, aggregates in pattern.json, row-level evaluation_results.json, and document identity by object key (`document_key`). Benchmark input fields live in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json).
 
 ## Why
 
@@ -24,6 +24,7 @@ Comparable, standardized metrics are required for GAM ranking and for users to t
 * Define the metric set and evaluator backends used every optimization run
 * Document judge model auto-selection and calibration for answer_relevance
 * Specify evaluation aggregates in pattern.json and per-row evaluation_results.json
+* Identify retrieved context by `document_key` (object key)
 
 ## Non-Goals
 
@@ -92,10 +93,12 @@ Each pattern subdirectory under **`rag_patterns/<pattern_name>/`** contains **`e
 | Field | Description |
 |-------|-------------|
 | `question` | Benchmark question text |
-| `correct_answers` | Ground-truth answers from `benchmark_data.json` |
+| `correct_answers` | Ground-truth answers from the benchmark JSON |
 | `answer` | Generated answer for this pattern |
-| `answer_contexts[]` | Retrieved chunks: `text`, `document_id` |
+| `answer_contexts[]` | Retrieved chunks: `text`, `document_key` (full object key / path, not a filename) |
 | `metrics[]` | Per-metric scores for this row: `name`, `evaluator`, `score` (**0–1** float); `name` matches `evaluation.metrics[].name` in `pattern.json` |
+
+Ground-truth document keys stay on the benchmark input ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json)). Pattern / leaderboard source labels use the same object key as `document_key`. Two locations with the same basename remain distinct because `document_key` is the full object path.
 
 KFP **`evaluation_results.json`** is the source of truth for row-level scores and retrieved context.
 
@@ -108,11 +111,11 @@ KFP **`evaluation_results.json`** is the source of truth for row-level scores an
     "answer_contexts": [
       {
         "text": "XR-200 Controller — Warranty: 24 months from purchase date.",
-        "document_id": "xr-200-manual.pdf"
+        "document_key": "product-manuals/xr-200-manual.pdf"
       },
       {
         "text": "Register your XR-200 within 30 days to activate warranty coverage.",
-        "document_id": "warranty-policy.pdf"
+        "document_key": "policies/warranty-policy.pdf"
       }
     ],
     "metrics": [
@@ -130,7 +133,7 @@ KFP **`evaluation_results.json`** is the source of truth for row-level scores an
     "answer_contexts": [
       {
         "text": "Remote diagnostics are available starting in firmware release 3.2.",
-        "document_id": "release-notes-3.2.pdf"
+        "document_key": "release-notes/release-notes-3.2.pdf"
       }
     ],
     "metrics": [
@@ -150,7 +153,7 @@ KFP **`evaluation_results.json`** is the source of truth for row-level scores an
 
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — full `pattern.json` schema and artifact layout
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
-- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — `optimization_metric` pipeline parameter
+- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — `optimization_metric`; corpus list; benchmark JSON (`correct_answer_document_keys`)
 - [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md) — optional DSPy prompt pre-optimization before GAM
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [ai4rag evaluation guide](https://ibm.github.io/ai4rag/latest/user-guide/evaluation/)

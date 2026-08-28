@@ -2,13 +2,13 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-08-26 |
+| Date           | 2026-08-28 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHAISTRAT-1673](https://redhat.atlassian.net/browse/RHAISTRAT-1673) · [RHAISTRAT-2040](https://redhat.atlassian.net/browse/RHAISTRAT-2040) · [RHAISTRAT-2440](https://redhat.atlassian.net/browse/RHAISTRAT-2440) |
+| Tickets        | [RHAISTRAT-1673](https://redhat.atlassian.net/browse/RHAISTRAT-1673) · [RHAISTRAT-2040](https://redhat.atlassian.net/browse/RHAISTRAT-2040) · [RHAISTRAT-2440](https://redhat.atlassian.net/browse/RHAISTRAT-2440) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
 | Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0007-maas-support](./ODH-ADR-0007-maas-support.md) |
 
 ## What
@@ -22,6 +22,7 @@ Pipeline operators and Dashboard integrations need a stable contract for how opt
 ## Goals
 
 * Define the public parameter surface of `documents_rag_optimization_pipeline`
+* Document multi-location corpus ingest (`input_data_keys` as a list of up to 10 keys/prefixes) and benchmark document identity by object key
 * Document speed and balanced presets (Docling behavior, chunking envelope, inference concurrency)
 * Specify chunking methods (recursive, hybrid) and retrieval modes (vector, keyword, hybrid) used in the search space
 
@@ -41,6 +42,8 @@ Search-space preparation runs **before** text extraction so unresponsive or misc
 ## Table of contents
 
 - [Pipeline parameters](#pipeline-parameters)
+- [Corpus locations](#corpus-locations)
+- [Benchmark JSON](#benchmark-json)
 - [Connections](#connections)
 - [Presets](#presets)
 - [Chunking methods](#chunking-methods)
@@ -60,7 +63,7 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `test_data_key` | `str` | (required) | Object key of the test data file |
 | `input_data_secret_name` | `str` | (required) | Secret for document corpus access (same key convention) |
 | `input_data_bucket_name` | `str` | (required) | Bucket containing source documents |
-| `input_data_key` | `str` | `""` | Object key or prefix for input documents |
+| `input_data_keys` | `list[str]` | `[]` | Object keys or prefixes for the document corpus (1–10). See [Corpus locations](#corpus-locations). |
 | `maas_secret_name` | `str` | (required) | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`). Used for model validation, embeddings, generation, and judge calls. |
 | `vector_db_secret_name` | `str` | (required) | Vector DB Connection. Key prefix selects the backend: `MILVUS_*` (at least `MILVUS_URI`) or `PGVECTOR_*`. |
 | `graph_db_secret_name` | `str` | `""` | Graph DB Connection for the **Graph RAG** template. Empty for simple RAG. Required when Graph RAG is selected ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). v1 backend: **Neo4j** (`NEO4J_*` keys). |
@@ -69,6 +72,62 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `optimization_metric` | `str` | `overall_score` | GAM objective. Allowed: `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`. Backends, judge selection, and score fields: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md). |
 | `optimization_max_rag_patterns` | `int` | `8` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
+
+---
+
+## Corpus locations
+
+`input_data_keys` is a **list of object keys or prefixes** in `input_data_bucket_name`.
+
+| Rule | Detail |
+|------|--------|
+| Cardinality | **1–10** locations per experiment. More than 10 is out of scope. |
+| Scope | All locations are in the **same** Connection (`input_data_secret_name`) and **same** bucket. Multi-Connection / multi-bucket selection is out of scope. |
+| Union | Document discovery, the 1 GB optimization sample, and production indexing consume the **union** of those locations. The sample cap is unchanged. |
+| Single location | A one-element list is valid. |
+| Indexing | The same list is copied onto `pattern.json` → `indexing.pipeline_spec.parameters.input_data_keys` so full-corpus indexing uses those locations ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#index-building)). |
+
+Empty list is invalid at run time: at least one key or prefix is required.
+
+---
+
+## Benchmark JSON
+
+`test_data_key` points at one JSON file (array of rows) used as the evaluation benchmark. Ground-truth **document identity is the S3 object key**, not a filename.
+
+| Field | Type | Role |
+|-------|------|------|
+| `question` | `str` | Benchmark question |
+| `correct_answers` | `list[str]` | Ground-truth answers |
+| `correct_answer_document_keys` | `list[str]` | Object keys of the documents the answers were drawn from |
+
+Each `correct_answer_document_keys` value is a full object key (path), unique across the union of selected corpus locations: the same basename under two prefixes is two keys. Pipeline validation **fails** if `correct_answer_document_keys` is missing, empty, or any key does not match an ingested object.
+
+```json
+[
+  {
+    "question": "What warranty period applies to the XR-200 controller?",
+    "correct_answers": [
+      "The XR-200 controller has a 24-month warranty."
+    ],
+    "correct_answer_document_keys": [
+      "product-manuals/xr-200-manual.pdf",
+      "policies/warranty-policy.pdf"
+    ]
+  },
+  {
+    "question": "Which firmware versions support remote diagnostics?",
+    "correct_answers": [
+      "Firmware 3.2 and later supports remote diagnostics."
+    ],
+    "correct_answer_document_keys": [
+      "release-notes/release-notes-3.2.pdf"
+    ]
+  }
+]
+```
+
+Row-level evaluation output (`evaluation_results.json`) does **not** repeat `correct_answer_document_keys`. Retrieved context uses `document_key`: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md).
 
 ---
 
@@ -232,7 +291,7 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
-- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
+- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — `evaluation_results.json` `document_key`; benchmark field is defined above
 - [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md)
 - [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS, vector-DB, and graph-DB Connections
 - [documents_rag_optimization_pipeline](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)

@@ -2,13 +2,13 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-08-26 |
+| Date           | 2026-08-28 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHAISTRAT-1846](https://redhat.atlassian.net/browse/RHAISTRAT-1846) · [RHAISTRAT-1731](https://redhat.atlassian.net/browse/RHAISTRAT-1731) · [RHAISTRAT-1724](https://redhat.atlassian.net/browse/RHAISTRAT-1724) · [RHAISTRAT-1424](https://redhat.atlassian.net/browse/RHAISTRAT-1424) |
+| Tickets        | [RHAISTRAT-1846](https://redhat.atlassian.net/browse/RHAISTRAT-1846) · [RHAISTRAT-1731](https://redhat.atlassian.net/browse/RHAISTRAT-1731) · [RHAISTRAT-1724](https://redhat.atlassian.net/browse/RHAISTRAT-1724) · [RHAISTRAT-1424](https://redhat.atlassian.net/browse/RHAISTRAT-1424) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
 | Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0007-maas-support](./ODH-ADR-0007-maas-support.md) |
 
 ## What
@@ -56,7 +56,7 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 
 The **[`documents_rag_optimization_pipeline`](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** runs **`rag_templates_optimization`** to search RAG configurations and score each candidate on a benchmark (up to 1 GB document sample). Outputs land under **`rag_patterns/<pattern_subdir>/`** in DSPA storage (`<bucket>/<pipeline-name>/<run-id>/…`) plus a pipeline-wide HTML leaderboard.
 
-Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipeline spec), and **`evaluation`** results. Index building processes the **full document corpus** into the vector store the pattern queries at inference time. Consumers assemble chat completions from `settings.generation`; they do **not** read an `inference` / `responses_template` object.
+Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipeline spec), and **`evaluation`** results. Index building processes the **full document corpus** (union of `input_data_keys` locations) into the vector store the pattern queries at inference time. Consumers assemble chat completions from `settings.generation`; they do **not** read an `inference` / `responses_template` object.
 
 ---
 
@@ -221,7 +221,10 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
         "vector_db_secret_name": "milvus",
         "input_data_secret_name": "minio",
         "input_data_bucket_name": "jwalaszc-bucket",
-        "input_data_key": "rh_summit_2026/documents",
+        "input_data_keys": [
+          "rh_summit_2026/documents",
+          "rh_summit_2026/policies"
+        ],
         "batch_size": 20,
         "provider_type": "milvus",
         "collection_name": "ai4rag_20260824161307_t2pxa4s3",
@@ -237,7 +240,7 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
       "overrides_allowed": [
         "input_data_secret_name",
         "input_data_bucket_name",
-        "input_data_key",
+        "input_data_keys",
         "collection_name",
         "batch_size"
       ]
@@ -359,6 +362,8 @@ Index building populates the production vector store via the managed **`document
 
 **Parameter sources:** optimization run → `maas_secret_name`, `vector_db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Secret fields are **names only** (Kubernetes Secret references).
 
+`parameters.input_data_keys` is the same **`list[str]`** as the optimization run (1–10 object keys or prefixes, same Connection/bucket). Production indexing uses that full list so the production corpus matches optimization. A one-element list is a single location. Corpus contract: [ODH-ADR-0002 — Corpus locations](./ODH-ADR-0002-experiment-settings.md#corpus-locations).
+
 **Workflow:** optimization completes → user selects pattern → read `pipeline_spec` → resolve managed pipeline → pre-fill run form → user confirms/overrides → submit → full corpus indexed → [retrieve and generation](#retrieve-and-generation) ready.
 
 **Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding (MaaS) → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change.
@@ -369,7 +374,7 @@ Index building populates the production vector store via the managed **`document
 
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — simple vs Neo4j Graph RAG templates; which kit path each maps to
-- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, presets, chunking, retrieval
+- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, corpus list, benchmark JSON, presets, chunking, retrieval
 - [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS HPO wiring
 - [MLflow integration](./ODH-ADR-0008-mlflow-integration.md) — tracking pointers to pattern artifacts
 - [RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608) — AgentProfile schema for Gen AI Studio

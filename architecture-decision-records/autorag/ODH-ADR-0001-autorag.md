@@ -2,13 +2,13 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-07-15 |
+| Date           | 2026-08-28 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHAISTRAT-188](https://redhat.atlassian.net/browse/RHAISTRAT-188) |
+| Tickets        | [RHAISTRAT-188](https://redhat.atlassian.net/browse/RHAISTRAT-188) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) |
 | Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md) · [ODH-ADR-0007](./ODH-ADR-0007-maas-support.md) · [ODH-ADR-0008](./ODH-ADR-0008-mlflow-integration.md) |
 
 ## What
@@ -113,7 +113,7 @@ The pipeline surface is defined in [ODH-ADR-0002-experiment-settings](./ODH-ADR-
 
 | Category | Purpose |
 | -------- | ------- |
-| **Data references** | Source document location and benchmark data for evaluation |
+| **Data references** | Up to 10 document locations (object keys or prefixes) in one Connection/bucket, plus benchmark data for evaluation ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#corpus-locations)) |
 | **Platform credentials** | Connections/secrets for inference and vector I/O endpoints |
 | **Optimization controls** | Pattern budget, objective metric, quality preset |
 | **Search-space constraints** | Optional allow-lists and bounds on chunking, embedding, retrieval, and generation dimensions |
