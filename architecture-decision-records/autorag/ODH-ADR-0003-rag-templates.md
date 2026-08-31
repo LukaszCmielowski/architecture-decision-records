@@ -141,7 +141,7 @@ Graph RAG remains **out of the current Tech Preview template set** until product
 | **Corpus** | Same Docling → `extracted_text` and pipeline `test_data` as simple RAG |
 | **vs simple RAG** | Graph RAG adds a template type; it does not replace the current LangChain vector store + MaaS embed/generate path |
 
-Without a reachable Neo4j Connection (`graph_db_secret_name`), Graph RAG cannot run. Secret keys: [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#connections).
+Without a reachable Neo4j Connection (`graph_db_secret_name`), Graph RAG cannot run. A separate `vector_db_secret_name` is not required for Graph RAG (Neo4j holds graph + vectors). Simple RAG requires `vector_db_secret_name` and leaves `graph_db_secret_name` empty. At least one of those two pipeline parameters must be set: [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#connections).
 
 ### Neo4j GraphRAG
 

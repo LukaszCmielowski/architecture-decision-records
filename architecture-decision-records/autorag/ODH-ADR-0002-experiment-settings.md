@@ -65,13 +65,15 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `input_data_bucket_name` | `str` | (required) | Bucket containing source documents |
 | `input_data_keys` | `list[str]` | `[]` | Object keys or prefixes for the document corpus (1–10). See [Corpus locations](#corpus-locations). |
 | `maas_secret_name` | `str` | (required) | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`). Used for model validation, embeddings, generation, and Ragas evaluation. |
-| `vector_db_secret_name` | `str` | (required) | Vector DB Connection. Key prefix selects the backend: `MILVUS_*` (at least `MILVUS_URI`) or `PGVECTOR_*`. |
-| `graph_db_secret_name` | `str` | `""` | Graph DB Connection for the **Graph RAG** template. Empty for simple RAG. Required when Graph RAG is selected ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). v1 backend: **Neo4j** (`NEO4J_*` keys). |
+| `vector_db_secret_name` | `str` | `""` | Vector DB Connection for **simple RAG**. Key prefix selects the backend: `MILVUS_*` (at least `MILVUS_URI`) or `PGVECTOR_*`. Empty when the run uses Graph RAG only. |
+| `graph_db_secret_name` | `str` | `""` | Graph DB Connection for the **Graph RAG** template ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). Empty for simple RAG. v1 backend: **Neo4j** (`NEO4J_*` keys). |
 | `embedding_models` | `list[str]` | (required) | Non-empty list of embedding model ids for the search space. MaaS does not expose type metadata, so models cannot be inferred. |
 | `generation_models` | `list[str]` | (required) | Non-empty list of generation / foundation model ids for the search space. Same reason as `embedding_models`. |
 | `optimization_metric` | `object` | `{ "name": "overall_score", "evaluator": "custom" }` | GAM objective `{name, evaluator}`. Allowed pairs and score fields: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). |
 | `optimization_max_rag_patterns` | `int` | `8` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
+
+At least one of `vector_db_secret_name` or `graph_db_secret_name` must be non-empty. Both empty is invalid. Typical: simple RAG sets vector only; Graph RAG sets graph only (Neo4j holds graph + vectors). Both may be set if a run uses both templates.
 
 ---
 
@@ -143,7 +145,7 @@ HPO uses **MaaS** for model discovery, embeddings, chat completions, and Ragas e
 | Chat completion | **MaaS** | Generation during trials |
 | Embeddings | **MaaS** | Embedding calls during trials |
 | Ragas evaluation | **MaaS** | LLM and embedding calls ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#ragas-runtime)) |
-| Vector upsert / search | LangChain adapters | Milvus, pgvector, etc. via `vector_db_secret_name` |
+| Vector upsert / search | LangChain adapters | Milvus, pgvector, etc. when `vector_db_secret_name` is set |
 
 Trial-time path:
 
@@ -167,24 +169,24 @@ Mounted on `search_space_preparation`, `models_pre_selector`, and `rag_templates
 
 **Vector database** (`vector_db_secret_name`)
 
-Backend is selected from keys present on the secret (mounted on `rag_templates_optimization`):
+Used for the simple RAG template. Empty when Graph RAG uses Neo4j only. When this parameter is set, backend is selected from keys present on the secret (mounted on `rag_templates_optimization`):
 
 | Backend | Keys | Selection |
 |---------|------|-----------|
 | Milvus | `MILVUS_URI` (required), `MILVUS_TOKEN`, `MILVUS_SERVER_CERT` | Any `MILVUS*` env var |
 | PGVector | `PGVECTOR_HOST`, `PGVECTOR_PORT`, `PGVECTOR_DB`, `PGVECTOR_USER`, `PGVECTOR_PASSWORD` | Else any `PGVECTOR*` env var |
 
-Missing both prefixes fails the optimization step.
+When this parameter is set, missing both prefixes fails the optimization step.
 
 **Graph database** (`graph_db_secret_name`)
 
-Used only for the Graph RAG template. Unused / empty for simple RAG. v1 supports **Neo4j**; keys are detected on the secret (mounted on `rag_templates_optimization`):
+Used for the Graph RAG template. Unused / empty for simple RAG. v1 supports **Neo4j**; keys are detected on the secret (mounted on `rag_templates_optimization`):
 
 | Backend | Keys | Selection |
 |---------|------|-----------|
 | Neo4j | `NEO4J_URI` (required; `neo4j://` or `bolt://`), `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` (optional; default `neo4j`) | Any `NEO4J*` env var |
 
-When Graph RAG is selected, a missing or non-Neo4j secret fails the optimization step. Simple RAG ignores this parameter.
+When this parameter is set, a missing or non-Neo4j secret fails the optimization step. Graph RAG requires it; simple RAG ignores it. At least one of `vector_db_secret_name` or `graph_db_secret_name` must be set.
 
 **Object storage** (`test_data_secret_name`, `input_data_secret_name`)
 

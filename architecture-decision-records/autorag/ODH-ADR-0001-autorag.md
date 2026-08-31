@@ -114,7 +114,7 @@ The pipeline surface is defined in [ODH-ADR-0002-experiment-settings](./ODH-ADR-
 | Category | Purpose |
 | -------- | ------- |
 | **Data references** | Up to 10 document locations (object keys or prefixes) in one Connection/bucket, plus benchmark data for evaluation ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#corpus-locations)) |
-| **Platform credentials** | MaaS Connection (chat and embeddings) and vector-DB Connection (upsert/search) |
+| **Platform credentials** | MaaS Connection (chat and embeddings), plus at least one store Connection: vector-DB and/or graph-DB |
 | **Optimization controls** | Pattern budget, objective metric, quality preset |
 | **Search-space constraints** | Optional allow-lists and bounds on chunking, embedding, retrieval, and generation dimensions |
 
@@ -186,7 +186,7 @@ Specific parameter names, presets, retrieval modes, and metric backends are deta
 
 * **Data Access**: AutoRAG uses RHOAI Connections (Kubernetes Secrets) for secure access to data sources; credential names — not secret values — appear in pipeline parameters
 * **Namespace Isolation**: Connections are namespace-scoped, preventing cross-namespace data access
-* **Platform and vector store access**: MaaS credentials (`maas_secret_name`) for chat and embeddings; vector-DB credentials (`vector_db_secret_name`) for upsert/search. Both are Connections/secrets.
+* **Platform and store access**: MaaS credentials (`maas_secret_name`) for chat and embeddings; store credentials `vector_db_secret_name` and/or `graph_db_secret_name` (at least one). All are Connections/secrets.
 * **Artifact Storage**: Results are stored in user-configured pipeline artifact locations with appropriate access controls
 * **Data Privacy**: Documents and test data are processed within the pipeline execution environment; retention follows configured storage policies
 
