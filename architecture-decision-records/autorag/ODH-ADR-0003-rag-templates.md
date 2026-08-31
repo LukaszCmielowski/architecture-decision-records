@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-2357](https://redhat.atlassian.net/browse/RHAISTRAT-2357) · [RHAIRFE-2709](https://redhat.atlassian.net/browse/RHAIRFE-2709) |
-| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0006-maas-support](./ODH-ADR-0006-maas-support.md) |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) |
 
 ## What
 
@@ -83,7 +83,7 @@ question
 
 | Concern | Behavior |
 |---------|----------|
-| **Indexing** | Chunk → embed → write vector store ([experiment settings](./ODH-ADR-0002-experiment-settings.md)) |
+| **Indexing** | Chunk → MaaS embed → write vector store ([experiment settings](./ODH-ADR-0002-experiment-settings.md)) |
 | **Retrieval** | One query; `number_of_chunks`, `search_mode` (`vector` / `keyword` / `hybrid`), optional ranker |
 | **Generation** | One LLM call with `system_message_text` / `user_message_text` / `context_template_text` over retrieved chunks |
 | **Inference export** | `pattern.json` `settings` — retrieve-and-generate in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation) |
@@ -139,7 +139,7 @@ Graph RAG remains **out of the current Tech Preview template set** until product
 | **Graph store** | Neo4j (`graph_db_secret_name`) |
 | **MaaS** | Embedding, generation, and extraction model ids via `maas_secret_name` — no hardcoded vendor SDKs |
 | **Corpus** | Same Docling → `extracted_text` and pipeline `test_data` as simple RAG |
-| **vs simple RAG** | Graph RAG adds a template type; it does not replace the current LangChain vector retrieve + MaaS generate path |
+| **vs simple RAG** | Graph RAG adds a template type; it does not replace the current LangChain vector store + MaaS embed/generate path |
 
 Without a reachable Neo4j Connection (`graph_db_secret_name`), Graph RAG cannot run. Secret keys: [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#connections).
 
@@ -301,7 +301,6 @@ This ADR only records **which template** maps to which starter-kit path.
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — search-space dimensions for the current template
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — artifacts, `pattern.json`, retrieve / generate, Helm, one-click Agent Sandbox, Studio OGX test
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — benchmark metrics
-- [MaaS support](./ODH-ADR-0006-maas-support.md) — MaaS HPO wiring
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [neo4j-graphrag — User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)
 - [neo4j-graphrag — KG Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)

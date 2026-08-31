@@ -8,12 +8,12 @@
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHAISTRAT-1673](https://redhat.atlassian.net/browse/RHAISTRAT-1673) · [RHAISTRAT-2040](https://redhat.atlassian.net/browse/RHAISTRAT-2040) · [RHAISTRAT-2440](https://redhat.atlassian.net/browse/RHAISTRAT-2440) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
-| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0006-maas-support](./ODH-ADR-0006-maas-support.md) |
+| Tickets        | [RHAISTRAT-1673](https://redhat.atlassian.net/browse/RHAISTRAT-1673) · [RHAISTRAT-2040](https://redhat.atlassian.net/browse/RHAISTRAT-2040) · [RHAISTRAT-2440](https://redhat.atlassian.net/browse/RHAISTRAT-2440) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
 
 ## What
 
-This ADR documents the AutoRAG documents RAG optimization pipeline public parameters, quality presets, and the chunking / retrieval search-space dimensions explored by ai4rag during GAM optimization.
+This ADR documents the AutoRAG documents RAG optimization pipeline public parameters, HPO-time MaaS and vector-store wiring, quality presets, and the chunking / retrieval search-space dimensions explored by ai4rag during GAM optimization.
 
 ## Why
 
@@ -25,17 +25,17 @@ Pipeline operators and Dashboard integrations need a stable contract for how opt
 * Document multi-location corpus ingest (`input_data_keys` as a list of up to 10 keys/prefixes) and benchmark document identity by object key
 * Document speed and balanced presets (Docling behavior, chunking envelope, inference concurrency)
 * Specify chunking methods (recursive, hybrid) and retrieval modes (vector, keyword, hybrid) used in the search space
+* Specify HPO-time MaaS vs LangChain split (catalog discovery, embeddings, chat, Ragas vs vector-store upsert/search)
 
 ## Non-Goals
 
 * RAG template composition beyond the current simple-RAG search space (see ODH-ADR-0003)
-* pattern.json schema (settings, indexing, evaluation — see ODH-ADR-0004)
+* pattern.json schema, production retrieve-and-generate, and serving (see ODH-ADR-0004)
 * Evaluation metric backends and catalog (see ODH-ADR-0005)
-* MaaS integration rationale (see ODH-ADR-0006)
 
 ## How
 
-Pipeline parameters, presets, and the **chunking / retrieval** search space for **`documents_rag_optimization_pipeline`** ([opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)). ADR context: [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md). Inference and vector-store wiring: [ODH-ADR-0006](./ODH-ADR-0006-maas-support.md).
+Pipeline parameters, presets, **Connections** (MaaS / vector DB / graph DB), and the **chunking / retrieval** search space for **`documents_rag_optimization_pipeline`** ([opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)). ADR context: [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md). Production retrieve-and-generate: [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md).
 
 Search-space preparation runs **before** text extraction so unresponsive or misconfigured MaaS models fail the experiment before Docling work.
 
@@ -134,6 +134,27 @@ Row-level evaluation output (`evaluation_results.json`) does **not** repeat `cor
 ## Connections
 
 Secrets are Kubernetes Secret **names** (RHOAI Connections). Values are injected as environment variables; they are not pipeline-parameter payloads.
+
+HPO uses **MaaS** for model discovery, embeddings, chat completions, and Ragas evaluation, and **LangChain adapters** for vector upsert and search. AutoRAG does not use a component-specific model registry: the search space is the MaaS catalog constrained by the required `embedding_models` / `generation_models` lists. Production retrieve-and-generate uses the same MaaS Connection ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation)).
+
+| Capability | Provider | Notes |
+|------------|----------|-------|
+| LLM discovery | **MaaS** | List available chat models for the search space |
+| Chat completion | **MaaS** | Generation during trials |
+| Embeddings | **MaaS** | Embedding calls during trials |
+| Ragas evaluation | **MaaS** | LLM and embedding calls ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#ragas-runtime)) |
+| Vector upsert / search | LangChain adapters | Milvus, pgvector, etc. via `vector_db_secret_name` |
+
+Trial-time path:
+
+```text
+chunks
+  → embed (MaaS)
+  → vector DB upsert (LangChain adapter)
+  → LangChain search (vector / keyword / hybrid)
+  → MaaS chat completion
+  → evaluate metrics (Unitxt; Ragas LLM and embeddings via MaaS)
+```
 
 **MaaS** (`maas_secret_name`)
 
@@ -292,6 +313,5 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metric catalog and `optimization_metric`; `evaluation_results.json` `document_key`; benchmark field is defined above
-- [MaaS support](./ODH-ADR-0006-maas-support.md) — MaaS, vector-DB, and graph-DB Connections
 - [documents_rag_optimization_pipeline](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)
 - [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/)

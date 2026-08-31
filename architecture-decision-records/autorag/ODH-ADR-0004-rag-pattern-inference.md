@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-1846](https://redhat.atlassian.net/browse/RHAISTRAT-1846) · [RHAISTRAT-1731](https://redhat.atlassian.net/browse/RHAISTRAT-1731) · [RHAISTRAT-1724](https://redhat.atlassian.net/browse/RHAISTRAT-1724) · [RHAISTRAT-1424](https://redhat.atlassian.net/browse/RHAISTRAT-1424) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
-| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0006-maas-support](./ODH-ADR-0006-maas-support.md) |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) |
 
 ## What
 
@@ -62,7 +62,7 @@ Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipel
 
 ## Pattern artifacts
 
-Canonical per-pattern inventory. Sibling ADRs link here instead of repeating this table. Row-level score schema: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson). Zip Helm and one-click serving: [Retrieve and generation](#retrieve-and-generation). MLflow pointers: [ODH-ADR-0007](./ODH-ADR-0007-mlflow-integration.md).
+Canonical per-pattern inventory. Sibling ADRs link here instead of repeating this table. Row-level score schema: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson). Zip Helm and one-click serving: [Retrieve and generation](#retrieve-and-generation). MLflow pointers: [ODH-ADR-0006](./ODH-ADR-0006-mlflow-integration.md).
 
 | Artifact | Purpose |
 |----------|---------|
@@ -286,7 +286,7 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
 
 ## Retrieve and generation
 
-Optimization and production generation both use **MaaS OpenAI-compatible chat completions** (`MAAS_BASE_URL`, `MAAS_API_KEY`) — `POST {MAAS_BASE_URL}/v1/chat/completions`. Retrieval uses the LangChain vector-store adapter for `settings.vector_store_binding.provider_type` / `collection_name` (Milvus or PGVector credentials from `vector_db_secret_name`). Query-time knobs come from `settings.retrieval` (`method`, `number_of_chunks`, `search_mode`, `ranker_strategy`, `ranker_alpha`).
+Optimization and production both use **MaaS** for chat completions (`POST {MAAS_BASE_URL}/v1/chat/completions`) and for **embeddings** (indexing and query-time vector search). Retrieval uses the LangChain vector-store adapter for `settings.vector_store_binding.provider_type` / `collection_name` (Milvus or PGVector credentials from `vector_db_secret_name`). Query-time knobs come from `settings.retrieval` (`method`, `number_of_chunks`, `search_mode`, `ranker_strategy`, `ranker_alpha`).
 
 Assemble the chat request from **`settings.generation`**:
 
@@ -315,7 +315,7 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 1. Load `pattern.json` and the MaaS / vector-DB Connections (`MAAS_BASE_URL`, `MAAS_API_KEY`, `vector_db_secret_name`). Secrets stay in Connections; they are not inlined in the notebook.
 2. Bind the LangChain vector store from `settings.vector_store_binding` (`provider_type`, `collection_name`).
 3. Run a **sample query** (a placeholder, or a row from the optimization benchmark, that the user can replace).
-4. Retrieve top-k chunks using `settings.retrieval` (`number_of_chunks`, `search_mode`, ranker fields).
+4. Retrieve top-k chunks using `settings.retrieval` (`number_of_chunks`, `search_mode`, ranker fields). Query embeddings use MaaS (`settings.embedding.model_id`).
 5. Format context with `settings.generation.context_template_text` (`{doc_number}`, `{document}`).
 6. Call MaaS `POST /v1/chat/completions` with `system_message_text`, `user_message_text` (`{reference_documents}`, `{question}`), `model_id`, `temperature`, and `max_completion_tokens`.
 7. Display the answer and retrieved chunks.
@@ -332,7 +332,7 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 | **API** | `POST /chat/completions` (streaming / non-streaming), `GET /health` |
 | **Local run** | `make run-app` (uvicorn on `PORT`, default 8000) or `make run-cli` |
 | **Cluster deploy** | Helm chart → OpenShift (`make deploy`) or [one-click](#one-click-deployment) with the prebuilt image |
-| **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) — [ODH-ADR-0007](./ODH-ADR-0007-mlflow-integration.md) |
+| **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) — [ODH-ADR-0006](./ODH-ADR-0006-mlflow-integration.md) |
 
 **User flow**
 
@@ -409,9 +409,8 @@ Index building populates the production vector store via the managed **`document
 
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — simple vs Neo4j Graph RAG templates; which kit path each maps to
-- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, corpus list, benchmark JSON, presets, chunking, retrieval
-- [MaaS support](./ODH-ADR-0006-maas-support.md) — MaaS HPO wiring
-- [MLflow integration](./ODH-ADR-0007-mlflow-integration.md) — tracking pointers to pattern artifacts
+- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, corpus list, benchmark JSON, presets, chunking, retrieval, HPO MaaS / vector Connections
+- [MLflow integration](./ODH-ADR-0006-mlflow-integration.md) — tracking pointers to pattern artifacts
 - [RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608) — AgentProfile schema for Gen AI Studio
 - [AgentProfile schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca) — ConfigMap / `profile.yaml` example and field definitions
 - [OGX](https://ogx-ai.github.io/docs) — Studio test backend (not the one-click / zip agent)
