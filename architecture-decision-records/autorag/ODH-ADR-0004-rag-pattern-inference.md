@@ -107,7 +107,7 @@ pattern.json
 
 `pattern.json` has **no** `inference` object and **no** `responses_template`. Prompt text lives only under `settings.generation`.
 
-GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) and `optimization_evaluator` parameters. Semantics, defaults, and allowed pairs: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
+GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) parameter and optional `optimization_evaluator`. Semantics, defaults, and omitted-evaluator resolution: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
 
 ---
 

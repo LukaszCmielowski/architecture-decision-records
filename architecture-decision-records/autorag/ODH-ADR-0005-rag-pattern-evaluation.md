@@ -22,7 +22,7 @@ Comparable, standardized metrics are required for GAM ranking and for users to t
 ## Goals
 
 * Define the metric set computed every optimization run (`unitxt`, `ragas`, `custom`) and that callers select only the GAM objective from that set
-* Specify GAM objective as two flat parameters: `optimization_metric` and `optimization_evaluator`
+* Specify GAM objective as `optimization_metric` plus optional `optimization_evaluator`
 * Specify evaluation aggregates in pattern.json and per-row evaluation_results.json
 * Identify retrieved context by `document_key` (object key)
 
@@ -46,17 +46,17 @@ Comparable, standardized metrics are required for GAM ranking and for users to t
 During **`rag_templates_optimization`**, ai4rag scores each RAG pattern on a benchmark.
 
 * **All catalog metrics from all evaluators are computed every run** (Unitxt, Ragas, and `overall_score`). Callers do not enable or disable evaluators or individual metrics.
-* The only user choice is **`optimization_metric`** + **`optimization_evaluator`**: which one catalog pair GAM uses to rank patterns. That pair must be from the full set. Default: `optimization_metric=overall_score`, `optimization_evaluator=custom`.
+* The only user choice is **`optimization_metric`** (required) and optional **`optimization_evaluator`**: which one catalog pair GAM uses to rank patterns. Default metric: `overall_score` (resolves to `custom` when evaluator is omitted).
 * Aggregates land in **`pattern.json`** → `evaluation.metrics[]` ([schema](./ODH-ADR-0004-rag-pattern-inference.md#patternjson)).
 * Per-row detail lands in **`evaluation_results.json`**.
 
-Per-question values are **0–1** floats. At pattern level, each `metrics[]` entry carries **`scores`** with **`mean`, `ci_low`, `ci_high`**. The `metrics[]` entry whose `name` and `evaluator` match the two pipeline parameters is marked `optimization_metric: true`; GAM uses that entry's `scores.mean`.
+Per-question values are **0–1** floats. At pattern level, each `metrics[]` entry carries **`scores`** with **`mean`, `ci_low`, `ci_high`**. The `metrics[]` entry whose `name` and `evaluator` match the resolved GAM objective is marked `optimization_metric: true`; GAM uses that entry's `scores.mean`.
 
 ---
 
 ## Metric catalog
 
-This full set is computed every optimization run. The user selects only which pair is the GAM objective ([optimization_metric](#optimization_metric) and `optimization_evaluator`).
+This full set is computed every optimization run. The user selects only which pair is the GAM objective ([optimization_metric](#optimization_metric); `optimization_evaluator` optional).
 
 **Unitxt** (`evaluator: "unitxt"`)
 
@@ -87,7 +87,7 @@ Unitxt `faithfulness` and Ragas `faithfulness` share a **name**. Disambiguate wi
 
 ## optimization_metric
 
-Pipeline and experiment input is two flat strings ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md)):
+Pipeline and experiment input ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md)):
 
 ```json
 {
@@ -96,21 +96,30 @@ Pipeline and experiment input is two flat strings ([ODH-ADR-0002](./ODH-ADR-0002
 }
 ```
 
+`optimization_evaluator` is optional:
+
+```json
+{
+  "optimization_metric": "faithfulness"
+}
+```
+
 Rules:
 
-* Every run still computes the **full catalog** (all Unitxt, all Ragas, and `overall_score`). These two parameters do not subset evaluation.
-* `optimization_metric` + `optimization_evaluator` must be a pair from the [catalog](#metric-catalog) and must match exactly one `evaluation.metrics[]` entry.
-* That entry is the only one with `optimization_metric: true`. GAM uses its `scores.mean`.
-* Both parameters are required. A metric name without `optimization_evaluator` is invalid (`faithfulness` exists on both Unitxt and Ragas).
+* Every run still computes the **full catalog** (all Unitxt, all Ragas, and `overall_score`). These parameters do not subset evaluation.
+* When `optimization_evaluator` is set, `optimization_metric` + `optimization_evaluator` must be a pair from the [catalog](#metric-catalog) and must match exactly one `evaluation.metrics[]` entry.
+* When `optimization_evaluator` is omitted, resolve the evaluator from the catalog: if the metric name exists on more than one evaluator, **ragas** wins; otherwise use the only evaluator that defines that name. Today that means `faithfulness` → `ragas`; `answer_correctness` / `context_correctness` → `unitxt`; `overall_score` → `custom`.
+* The resolved pair is the only `metrics[]` entry with `optimization_metric: true`. GAM uses its `scores.mean`. Artifacts still record `evaluator` on every score row.
 
 Default:
 
 ```json
 {
-  "optimization_metric": "overall_score",
-  "optimization_evaluator": "custom"
+  "optimization_metric": "overall_score"
 }
 ```
+
+(`optimization_evaluator` omitted → `custom`.)
 
 ---
 
