@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-2357](https://redhat.atlassian.net/browse/RHAISTRAT-2357) · [RHAIRFE-2709](https://redhat.atlassian.net/browse/RHAIRFE-2709) |
-| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0007-maas-support](./ODH-ADR-0007-maas-support.md) |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0006-maas-support](./ODH-ADR-0006-maas-support.md) |
 
 ## What
 
@@ -87,7 +87,7 @@ question
 | **Retrieval** | One query; `number_of_chunks`, `search_mode` (`vector` / `keyword` / `hybrid`), optional ranker |
 | **Generation** | One LLM call with `system_message_text` / `user_message_text` / `context_template_text` over retrieved chunks |
 | **Inference export** | `pattern.json` `settings` — retrieve-and-generate in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation) |
-| **Optimization** | GAM over chunking × embedding × retrieval × generation (and optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) candidates) |
+| **Optimization** | GAM over chunking × embedding × retrieval × generation |
 
 **Naming note:** ai4rag `hybrid` means dense + BM25 fused with RRF (or weighted fusion) over chunks. That is **not** Neo4j `HybridRetriever` / `HybridCypherRetriever` (vector + full-text, optionally plus Cypher).
 
@@ -258,7 +258,7 @@ AutoRAG / GAM should explore knobs that change **retrieval or generation quality
 
 | Template | Optimize (high value) | Optimize later / conditional | Usually **fix** (not GAM dims) |
 |----------|----------------------|------------------------------|----------------------------------|
-| **Current (simple) RAG** | Search space in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md); optional [prompt tuning](./ODH-ADR-0006-prompt-tuning.md) | Ranker / embedding allow-list / prompt candidate count | `vector_db_secret_name`, Docling preset, corpus / `test_data`, MaaS Connection |
+| **Current (simple) RAG** | Search space in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) | Ranker / embedding allow-list | `vector_db_secret_name`, Docling preset, corpus / `test_data`, MaaS Connection |
 | **Neo4j Graph RAG** | **Query-time:** `retriever_type` (`hybrid_cypher` / `vector_cypher` / `text2cypher` / …), `top_k`, Cypher hop depth / `LIMIT`; **gen:** model + temperature | **Index-time:** `GraphSchema` strictness / entity types; embedding model; full-text vs vector index params | `storage_profile: neo4j_hybrid_only`, `graph_db_secret_name`, LangGraph on/off (orchestration, not core RAG score) |
 
 **Shared rules**
@@ -299,10 +299,9 @@ This ADR only records **which template** maps to which starter-kit path.
 ## Related
 
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — search-space dimensions for the current template
-- [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md) — optional prompt candidates injected into the current template
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — artifacts, `pattern.json`, retrieve / generate, Helm, one-click Agent Sandbox, Studio OGX test
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — benchmark metrics
-- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS HPO wiring
+- [MaaS support](./ODH-ADR-0006-maas-support.md) — MaaS HPO wiring
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [neo4j-graphrag — User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)
 - [neo4j-graphrag — KG Builder](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_kg_builder.html)

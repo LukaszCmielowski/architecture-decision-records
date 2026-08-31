@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-188](https://redhat.atlassian.net/browse/RHAISTRAT-188) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) |
-| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md) · [ODH-ADR-0007](./ODH-ADR-0007-maas-support.md) · [ODH-ADR-0008](./ODH-ADR-0008-mlflow-integration.md) |
+| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-maas-support.md) · [ODH-ADR-0007](./ODH-ADR-0007-mlflow-integration.md) |
 
 ## What
 
@@ -59,12 +59,12 @@ AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **doc
 | **Managed pipelines** | Optimization and indexing ship as catalog-managed pipelines composed from reusable **pipelines-components** |
 | **ai4rag** | Search-space exploration, GAM-based configuration selection, pattern assembly, benchmark evaluation |
 | **Document extraction** | Structured extraction from source documents (Docling) |
-| **Platform inference abstraction** | LLM inference via MaaS (HPO); embeddings and vector I/O via user endpoint / LangChain adapters during optimization — see [ODH-ADR-0007](./ODH-ADR-0007-maas-support.md) |
+| **Platform inference abstraction** | LLM inference via MaaS (HPO); embeddings and vector I/O via user endpoint / LangChain adapters during optimization — see [ODH-ADR-0006](./ODH-ADR-0006-maas-support.md) |
 | **Vector store** | Persistent document embeddings via pluggable adapters; supported backends are documented in [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) and evolve without changing this parent ADR |
 | **MLflow** | Optional experiment tracking, metrics, and tracing when enabled at the project level |
 | **RHOAI Connections** | Secure, namespace-scoped credentials for data sources and platform endpoints |
 
-Operational detail for each layer (parameter names, search-space dimensions, metric backends, MaaS integration, MLflow) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0008).
+Operational detail for each layer (parameter names, search-space dimensions, metric backends, MaaS integration, MLflow) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0007).
 
 ### Lifecycle Phases
 
@@ -200,9 +200,8 @@ Specific parameter names, presets, retrieval modes, and metric backends are deta
   * [ODH-ADR-0003 — RAG templates](./ODH-ADR-0003-rag-templates.md)
   * [ODH-ADR-0004 — Pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
   * [ODH-ADR-0005 — Pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
-  * [ODH-ADR-0006 — Prompt tuning](./ODH-ADR-0006-prompt-tuning.md)
-  * [ODH-ADR-0007 — MaaS support](./ODH-ADR-0007-maas-support.md)
-  * [ODH-ADR-0008 — MLflow integration](./ODH-ADR-0008-mlflow-integration.md)
+  * [ODH-ADR-0006 — MaaS support](./ODH-ADR-0006-maas-support.md)
+  * [ODH-ADR-0007 — MLflow integration](./ODH-ADR-0007-mlflow-integration.md)
 * [AutoRAG component index](../../documentation/components/autorag/README.md)
 
 ## Reviews

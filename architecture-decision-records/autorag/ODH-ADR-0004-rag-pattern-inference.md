@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-1846](https://redhat.atlassian.net/browse/RHAISTRAT-1846) · [RHAISTRAT-1731](https://redhat.atlassian.net/browse/RHAISTRAT-1731) · [RHAISTRAT-1724](https://redhat.atlassian.net/browse/RHAISTRAT-1724) · [RHAISTRAT-1424](https://redhat.atlassian.net/browse/RHAISTRAT-1424) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
-| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0007-maas-support](./ODH-ADR-0007-maas-support.md) |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0006-maas-support](./ODH-ADR-0006-maas-support.md) |
 
 ## What
 
@@ -62,7 +62,7 @@ Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipel
 
 ## Pattern artifacts
 
-Canonical per-pattern inventory. Sibling ADRs link here instead of repeating this table. Row-level score schema: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson). Zip Helm and one-click serving: [Retrieve and generation](#retrieve-and-generation). MLflow pointers: [ODH-ADR-0008](./ODH-ADR-0008-mlflow-integration.md).
+Canonical per-pattern inventory. Sibling ADRs link here instead of repeating this table. Row-level score schema: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson). Zip Helm and one-click serving: [Retrieve and generation](#retrieve-and-generation). MLflow pointers: [ODH-ADR-0007](./ODH-ADR-0007-mlflow-integration.md).
 
 | Artifact | Purpose |
 |----------|---------|
@@ -332,7 +332,7 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 | **API** | `POST /chat/completions` (streaming / non-streaming), `GET /health` |
 | **Local run** | `make run-app` (uvicorn on `PORT`, default 8000) or `make run-cli` |
 | **Cluster deploy** | Helm chart → OpenShift (`make deploy`) or [one-click](#one-click-deployment) with the prebuilt image |
-| **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) — [ODH-ADR-0008](./ODH-ADR-0008-mlflow-integration.md) |
+| **Observability** | Optional MLflow tracing (`MLFLOW_TRACKING_URI`) — [ODH-ADR-0007](./ODH-ADR-0007-mlflow-integration.md) |
 
 **User flow**
 
@@ -410,8 +410,8 @@ Index building populates the production vector store via the managed **`document
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — simple vs Neo4j Graph RAG templates; which kit path each maps to
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, corpus list, benchmark JSON, presets, chunking, retrieval
-- [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS HPO wiring
-- [MLflow integration](./ODH-ADR-0008-mlflow-integration.md) — tracking pointers to pattern artifacts
+- [MaaS support](./ODH-ADR-0006-maas-support.md) — MaaS HPO wiring
+- [MLflow integration](./ODH-ADR-0007-mlflow-integration.md) — tracking pointers to pattern artifacts
 - [RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608) — AgentProfile schema for Gen AI Studio
 - [AgentProfile schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca) — ConfigMap / `profile.yaml` example and field definitions
 - [OGX](https://ogx-ai.github.io/docs) — Studio test backend (not the one-click / zip agent)

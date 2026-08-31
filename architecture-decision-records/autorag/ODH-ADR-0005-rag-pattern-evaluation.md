@@ -29,7 +29,6 @@ Comparable, standardized metrics are required for GAM ranking and for users to t
 ## Non-Goals
 
 * Search-space dimensions and pipeline parameters other than `optimization_metric` (see ODH-ADR-0002)
-* Optional DSPy prompt pre-optimization (see ODH-ADR-0006)
 
 ## How
 
@@ -201,7 +200,6 @@ KFP **`evaluation_results.json`** is the source of truth for row-level scores an
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — full `pattern.json` schema and artifact layout
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — `optimization_metric` `{name, evaluator}`; corpus list; benchmark JSON (`correct_answer_document_keys`)
-- [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md) — optional DSPy prompt pre-optimization before GAM
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [ai4rag evaluation guide](https://github.com/IBM/ai4rag/blob/main/docs/user-guide/evaluation.md)
 - [pipelines-components PR #204](https://github.com/opendatahub-io/pipelines-components/pull/204) — Ragas wiring on `rag_templates_optimization`
