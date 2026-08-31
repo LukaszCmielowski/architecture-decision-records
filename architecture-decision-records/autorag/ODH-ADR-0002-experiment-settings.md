@@ -69,7 +69,8 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `graph_db_secret_name` | `str` | `""` | Graph DB Connection for the **Graph RAG** template ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). Empty for simple RAG. v1 backend: **Neo4j** (`NEO4J_*` keys). |
 | `embedding_models` | `list[str]` | (required) | Non-empty list of embedding model ids for the search space. MaaS does not expose type metadata, so models cannot be inferred. |
 | `generation_models` | `list[str]` | (required) | Non-empty list of generation / foundation model ids for the search space. Same reason as `embedding_models`. |
-| `optimization_metric` | `object` | `{ "name": "overall_score", "evaluator": "custom" }` | GAM objective `{name, evaluator}`. Allowed pairs and score fields: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). |
+| `optimization_metric` | `str` | `overall_score` | GAM objective metric name. Must form a valid catalog pair with `optimization_evaluator`: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). |
+| `optimization_evaluator` | `str` | `custom` | GAM objective evaluator: `unitxt`, `ragas`, or `custom`. |
 | `optimization_max_rag_patterns` | `int` | `8` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
 
@@ -306,7 +307,7 @@ Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadat
 }
 ```
 
-ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric` ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). Sampling respects `max_combinations` and product search-space rules.
+ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric` + `optimization_evaluator` ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). Sampling respects `max_combinations` and product search-space rules.
 
 ---
 
@@ -314,6 +315,6 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
-- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metric catalog and `optimization_metric`; `evaluation_results.json` `document_key`; benchmark field is defined above
+- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metric catalog, `optimization_metric` / `optimization_evaluator`; `evaluation_results.json` `document_key`; benchmark field is defined above
 - [documents_rag_optimization_pipeline](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)
 - [Docling chunking concepts](https://docling-project.github.io/docling/concepts/chunking/)

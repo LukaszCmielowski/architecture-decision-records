@@ -126,7 +126,7 @@ Pre-check ranks prompt candidates with an **LLM-as-a-Judge** score (normalized *
 | Max tokens | Generous enough for score extraction (prototype used ~500; avoid tiny caps that truncate thinking/score text) |
 | Scale | Internal 1–5 (or equivalent) mapped to **0.0–1.0** |
 
-Full-benchmark metrics for Stage 2 are the catalog in [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) (Unitxt, Ragas, and `overall_score`). GAM ranks by `optimization_metric` `{name, evaluator}`.
+Full-benchmark metrics for Stage 2 are the catalog in [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) (Unitxt, Ragas, and `overall_score`). GAM ranks by `optimization_metric` and `optimization_evaluator`.
 
 ---
 
