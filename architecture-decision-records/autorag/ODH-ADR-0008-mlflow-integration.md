@@ -2,7 +2,7 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-08-25 |
+| Date           | 2026-08-31 |
 | Scope          | AutoRAG |
 | Status         | Draft |
 | Authors        | [Lukasz Cmielowski](@LukaszCmielowski) |
@@ -59,12 +59,12 @@ One parent run per KFP pipeline execution; one nested child run per RAG pattern 
 | MLflow concept | Proposed mapping |
 |----------------|------------------|
 | **Experiment** | Use KFP-managed experiment (`MLFLOW_EXPERIMENT_ID`). Otherwise: e.g. `autorag_documents_rag_optimization` plus optional suffix. |
-| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `vector_db_secret_name`, `graph_db_secret_name` (when set), `image`, `kfp_version`, `ai4rag_version`. |
-| **Child runs** | One nested child run per RAG pattern (folder name or `pattern.json` `name`). Enables side-by-side comparison of faithfulness / answer_correctness / context_correctness and chunking / retrieval / model choices. |
+| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric.name`, `optimization_metric.evaluator`, `optimization_max_rag_patterns`, `vector_db_secret_name`, `graph_db_secret_name` (when set), `image`, `kfp_version`, `ai4rag_version`. |
+| **Child runs** | One nested child run per RAG pattern (folder name or `pattern.json` `name`). Enables side-by-side comparison of Unitxt / Ragas / custom metrics and chunking / retrieval / model choices. |
 | **Traces** | **Required** when `MLFLOW_TRACKING_URI` is set. One trace per benchmark request, attached to the pattern child run. P patterns x N benchmark rows = P x N traces total. |
 | **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with MLflow `SpanType` where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for MaaS chat completions. |
 | **Params (child)** | From `pattern.json` `settings`: `chunking.*`, `embedding.model_id`, `retrieval.*`, `generation.model_id` / prompt fields, `vector_store_binding` (`provider_type`, `collection_name`). |
-| **Metrics (child)** | From `pattern.json`: `duration_seconds`, `iteration`; from `evaluation.metrics[]`: `log_metric(name, scores.mean)` per entry; objective score from the entry with `optimization_metric: true` (logged as `final_score`). |
+| **Metrics (child)** | Aggregate scores from `pattern.json` `evaluation.metrics[]`. Keying: [Metrics logged](#metrics-logged-child-runs). |
 | **Child Artifacts** | Pointers (URIs/paths) to the per-pattern files in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#pattern-artifacts). Not copied into MLflow. |
 
 ### Implementation approach
@@ -82,12 +82,12 @@ All logging is driven from `rag_templates_optimization` using each pattern's `pa
 
 ### Metrics logged (child runs)
 
-ai4rag computes RAGAS-style metrics during optimization. Log **aggregates only** on the pattern child run:
+ai4rag computes Unitxt and Ragas metrics during optimization. Log **aggregates only** on the pattern child run. Unitxt and Ragas both emit `faithfulness`; MLflow keys must include **evaluator** so the two series do not collide.
 
 | Source field | MLflow |
 |--------------|--------|
-| Objective metric `scores.mean` | `log_metric("final_score", ...)` from the `metrics[]` entry with `optimization_metric: true` |
-| `metrics[].name` | `log_metric(name, scores.mean)` for each entry in `evaluation.metrics` |
+| Objective metric `scores.mean` | `log_metric("final_score", ...)` from the `metrics[]` entry with `optimization_metric: true` (the `{name, evaluator}` pair) |
+| `metrics[].name` + `metrics[].evaluator` | `log_metric("{name}.{evaluator}", scores.mean)` for each entry in `evaluation.metrics` (e.g. `faithfulness.unitxt`, `faithfulness.ragas`, `overall_score.custom`) |
 | `duration_seconds` | `log_metric("duration_seconds", ...)` |
 
 Per-question rows stay in KFP `evaluation_results.json`.
@@ -124,7 +124,7 @@ Parent run (pipeline)
 |-----------|------------|----------------------------|
 | `autorag.retrieval` | `RETRIEVER` | Query in; retrieved documents out (`page_content`, `metadata.doc_uri`, `metadata.chunk_id`) per MLflow retriever schema |
 | `autorag.generation` | `CHAT_MODEL` | Query + context in; answer out; `mlflow.chat.tokenUsage`; `ai.model.name` / `ai.model.provider` |
-| `autorag.evaluation` | (default) | Ground truth, prediction, context in; per-metric scores out; `metric.{name}` attributes |
+| `autorag.evaluation` | (default) | Ground truth, prediction, context in; per-metric scores out; `metric.{name}.{evaluator}` attributes |
 
 Enable `mlflow.openai.autolog()` at component start so MaaS OpenAI-compatible chat calls inside `autorag.generation` produce nested spans without duplicating the full request body.
 

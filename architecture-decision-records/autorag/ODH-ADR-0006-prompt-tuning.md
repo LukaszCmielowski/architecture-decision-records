@@ -2,7 +2,7 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-07-29 |
+| Date           | 2026-08-31 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
@@ -118,7 +118,7 @@ Generation and judge calls use the same **MaaS** client / foundation-model pool 
 
 ## Metric
 
-Pre-check ranks prompt candidates with an **LLM-as-a-Judge** score (normalized **0–1**), aligned with AutoRAG’s judge-style evaluation rather than surface token overlap.
+Pre-check ranks prompt candidates with an **LLM-as-a-Judge** score (normalized **0–1**), not surface token overlap. This Stage 1 judge is independent of Stage 2 pattern evaluation ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)).
 
 | Setting | Guidance |
 |---------|----------|
@@ -126,7 +126,7 @@ Pre-check ranks prompt candidates with an **LLM-as-a-Judge** score (normalized *
 | Max tokens | Generous enough for score extraction (prototype used ~500; avoid tiny caps that truncate thinking/score text) |
 | Scale | Internal 1–5 (or equivalent) mapped to **0.0–1.0** |
 
-Full-benchmark metrics for Stage 2 remain those in [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) (`faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`).
+Full-benchmark metrics for Stage 2 are the catalog in [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) (Unitxt, Ragas, and `overall_score`). GAM ranks by `optimization_metric` `{name, evaluator}`.
 
 ---
 
@@ -145,7 +145,7 @@ Optional / disabled pre-check leaves today’s default-prompt GAM path unchanged
 
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — presets and search-space dimensions
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
-- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — Stage 2 metrics and judge model
+- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — Stage 2 metric catalog and `optimization_metric`
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json` generation fields
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [DSPy](https://github.com/stanfordnlp/dspy) — MIPROv2 prompt optimization

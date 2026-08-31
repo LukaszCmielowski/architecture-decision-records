@@ -2,7 +2,7 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-07-29 |
+| Date           | 2026-08-31 |
 | Scope          | AutoRAG Component |
 | Status         | Proposed |
 | Authors        | Lukasz Cmielowski |
@@ -13,20 +13,20 @@
 
 ## What
 
-This ADR documents integrating **Model-as-a-Service (MaaS)** into AutoRAG for LLM discovery, embeddings, chat completions, and judge invocations during hyperparameter optimization (HPO). Vector storage uses LangChain adapters via a vector-DB Connection.
+This ADR documents integrating **Model-as-a-Service (MaaS)** into AutoRAG for LLM discovery, embeddings, chat completions, Ragas evaluation (LLM and embeddings), and optional prompt pre-check during hyperparameter optimization (HPO). Vector storage uses LangChain adapters via a vector-DB Connection.
 
 ## Why
 
 MaaS is the RHOAI platform surface for listing and invoking chat-capable models (OpenAI-compatible routes, catalog, tenancy, Connections). AutoRAG HPO should:
 
-* Discover generation and judge models from the **MaaS catalog** instead of a component-specific model registry
-* Invoke chat and judge completions through **MaaS** with the same Connection patterns used elsewhere in RHOAI
+* Discover generation models from the **MaaS catalog** instead of a component-specific model registry
+* Invoke chat completions, embeddings, and Ragas evaluation through **MaaS** with the same Connection patterns used elsewhere in RHOAI
 * Keep the optimization search space aligned with models operators actually provision and govern via MaaS
 
 ## Goals
 
-* Use MaaS for dynamic LLM discovery (chat and judge models)
-* Use MaaS OpenAI-compatible routes for embeddings, chat completions, and judge scoring during HPO (and prompt pre-check when enabled)
+* Use MaaS for dynamic LLM discovery (generation models)
+* Use MaaS OpenAI-compatible routes for embeddings, chat completions, and Ragas evaluation during HPO (and prompt pre-check when enabled)
 * Use LangChain vector DB adapters for trial-time index and retrieval
 
 ## Non-Goals
@@ -38,7 +38,7 @@ MaaS is the RHOAI platform surface for listing and invoking chat-capable models 
 
 ## How
 
-Wire **`documents_rag_optimization_pipeline`** to MaaS (discovery, embeddings, chat/judge) and a LangChain-compatible vector DB. Optional Graph RAG adds `graph_db_secret_name`. GAM, pattern emission, and metrics stay as defined in sibling ADRs.
+Wire **`documents_rag_optimization_pipeline`** to MaaS (discovery, embeddings, chat, Ragas evaluation) and a LangChain-compatible vector DB. Optional Graph RAG adds `graph_db_secret_name`. GAM, pattern emission, and metrics stay as defined in sibling ADRs.
 
 ## Table of contents
 
@@ -54,9 +54,10 @@ Wire **`documents_rag_optimization_pipeline`** to MaaS (discovery, embeddings, c
 
 | Capability | Provider | Notes |
 |------------|----------|-------|
-| LLM discovery | **MaaS** | List available chat / judge models for the search space |
+| LLM discovery | **MaaS** | List available chat models for the search space |
 | Chat completion | **MaaS** | Generation during trials |
-| Judge / LLM-as-judge | **MaaS** | Evaluation and optional prompt pre-check ([ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md)) |
+| Ragas evaluation | **MaaS** | LLM and embedding calls for Ragas metrics ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#ragas-runtime)) |
+| Prompt pre-check | **MaaS** | Optional DSPy LLM-as-a-judge ([ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md)) |
 | Embeddings | **MaaS** | Embedding calls during trials |
 | Vector upsert / search | LangChain adapters | Milvus, pgvector, etc. via `vector_db_secret_name` |
 
@@ -70,7 +71,7 @@ Public surface of `documents_rag_optimization_pipeline`. **Secret key catalogs a
 
 | Parameter                | Role |
 |--------------------------|------|
-| `maas_secret_name`       | MaaS Connection — discovery, embeddings, chat, judge |
+| `maas_secret_name`       | MaaS Connection — discovery, embeddings, chat, Ragas evaluation, optional prompt pre-check |
 | `vector_db_secret_name` | Vector DB Connection for LangChain adapters |
 | `graph_db_secret_name`  | Graph DB Connection for Graph RAG (Neo4j). Empty for simple RAG. |
 
@@ -87,10 +88,10 @@ chunks
   → vector DB upsert (LangChain adapter)
   → LangChain search (vector / keyword / hybrid)
   → MaaS chat completion
-  → evaluate metrics (judge via MaaS when applicable)
+  → evaluate metrics (Unitxt; Ragas LLM and embeddings via MaaS)
 ```
 
-GAM selection, pattern emission, and metric backends remain as in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md), [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md), and [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md). Prompt pre-check ([ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md)) shares the MaaS chat/judge path when enabled.
+GAM selection, pattern emission, and metric backends remain as in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md), [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md), and [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md). Prompt pre-check ([ODH-ADR-0006](./ODH-ADR-0006-prompt-tuning.md)) shares the MaaS chat path when enabled.
 
 ---
 
@@ -108,7 +109,7 @@ GAM selection, pattern emission, and metric backends remain as in [ODH-ADR-0002]
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) — parent AutoRAG architecture
 - [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters and search space
 - [ODH-ADR-0004-rag-pattern-inference](./ODH-ADR-0004-rag-pattern-inference.md) — `pattern.json`, retrieve / generate, Studio OGX test
-- [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metrics and judge
-- [ODH-ADR-0006-prompt-tuning](./ODH-ADR-0006-prompt-tuning.md) — DSPy pre-check (shares MaaS chat/judge path)
+- [ODH-ADR-0005-rag-pattern-evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — Unitxt and Ragas metrics; `optimization_metric` `{name, evaluator}`
+- [ODH-ADR-0006-prompt-tuning](./ODH-ADR-0006-prompt-tuning.md) — DSPy pre-check (shares MaaS chat path)
 - [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) — MaaS integration for AutoRAG HPO
 - [RHOAIENG-79226](https://redhat.atlassian.net/browse/RHOAIENG-79226) — Agentic RAG deployment

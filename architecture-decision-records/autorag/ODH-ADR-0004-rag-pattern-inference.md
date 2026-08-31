@@ -2,7 +2,7 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-08-28 |
+| Date           | 2026-08-31 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
@@ -29,7 +29,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 
 ## Non-Goals
 
-* Metric computation and judge calibration details (see ODH-ADR-0005)
+* Metric catalog and score computation (see ODH-ADR-0005)
 * Graph RAG pattern storage profiles beyond sketches in ODH-ADR-0003
 
 ## How
@@ -93,9 +93,9 @@ pattern.json
 │       └── overrides_allowed
 └── evaluation
     └── metrics[]
-        ├── evaluator, name, description, scores (mean, ci_low, ci_high)
-        ├── model_id (judge entries only)
-        └── optimization_metric: true (exactly one entry — GAM objective)
+        ├── evaluator (unitxt | ragas | custom), name, description, scores (mean, ci_low, ci_high)
+        ├── model_id (ragas entries when recorded)
+        └── optimization_metric: true (exactly one entry — GAM objective {name, evaluator})
 ```
 
 | Field | Description |
@@ -103,11 +103,11 @@ pattern.json
 | `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time |
 | `settings` | Optimized RAG config: `vector_store_binding` (`provider_type`, `collection_name`), `chunking` (incl. `include_metadata`), `embedding`, `retrieval` (`method`, `number_of_chunks`, `search_mode`, ranker fields), `generation` (model, sampling, `context_template_text` / `user_message_text` / `system_message_text`, `language` `{code, name}`) |
 | `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
-| `evaluation` | `metrics[]` — per-metric `evaluator`, `name`, `description`, `scores` (`mean`, `ci_low`, `ci_high`); `model_id` on judge entries; exactly one entry has `optimization_metric: true` (GAM objective). See [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) |
+| `evaluation` | `metrics[]` aggregates. Catalog, evaluators, and GAM flag: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) |
 
 `pattern.json` has **no** `inference` object and **no** `responses_template`. Prompt text lives only under `settings.generation`.
 
-GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) parameter (default `overall_score`). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
+GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) parameter. Semantics, default, and allowed `{name, evaluator}` pairs: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
 
 ---
 
@@ -150,20 +150,53 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
         }
       },
       {
-        "name": "answer_relevance",
-        "evaluator": "judge",
-        "description": "LLM judge score for how directly and helpfully the response addresses the question.",
+        "name": "faithfulness",
+        "evaluator": "ragas",
+        "description": "Ragas faithfulness: whether the generated answer is grounded in retrieved context.",
         "scores": {
-          "mean": 0.95,
-          "ci_low": 0.85,
-          "ci_high": 1.0
+          "mean": 0.874,
+          "ci_low": 0.82,
+          "ci_high": 0.92
+        },
+        "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic"
+      },
+      {
+        "name": "answer_relevancy",
+        "evaluator": "ragas",
+        "description": "Ragas answer relevancy: how on-topic the answer is versus the question.",
+        "scores": {
+          "mean": 0.912,
+          "ci_low": 0.86,
+          "ci_high": 0.95
+        },
+        "model_id": "publishers/ai-eng-cracow/models/redhataibge-m3"
+      },
+      {
+        "name": "context_precision",
+        "evaluator": "ragas",
+        "description": "Ragas context precision: whether relevant retrieved contexts are ranked high.",
+        "scores": {
+          "mean": 0.868,
+          "ci_low": 0.80,
+          "ci_high": 0.93
+        },
+        "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic"
+      },
+      {
+        "name": "context_recall",
+        "evaluator": "ragas",
+        "description": "Ragas context recall: how much of the ground-truth answer is present in retrieved context.",
+        "scores": {
+          "mean": 0.938,
+          "ci_low": 0.88,
+          "ci_high": 0.98
         },
         "model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic"
       },
       {
         "name": "overall_score",
         "evaluator": "custom",
-        "description": "Aggregate score computed as the mean of all other evaluated metrics.",
+        "description": "Equal-weight mean of every other metric that ran (Unitxt and Ragas on the product path).",
         "scores": {
           "mean": 0.8806,
           "ci_low": 0.7844,

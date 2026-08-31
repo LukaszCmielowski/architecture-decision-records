@@ -2,7 +2,7 @@
 
 |                |            |
 | -------------- | ---------- |
-| Date           | 2026-08-28 |
+| Date           | 2026-08-31 |
 | Scope          | AutoRAG Component |
 | Status         | Approved |
 | Authors        | Lukasz Cmielowski |
@@ -30,7 +30,7 @@ Pipeline operators and Dashboard integrations need a stable contract for how opt
 
 * RAG template composition beyond the current simple-RAG search space (see ODH-ADR-0003)
 * pattern.json schema (settings, indexing, evaluation — see ODH-ADR-0004)
-* Evaluation metric backends and judge selection (see ODH-ADR-0005)
+* Evaluation metric backends and catalog (see ODH-ADR-0005)
 * MaaS integration rationale (see ODH-ADR-0007)
 
 ## How
@@ -64,12 +64,12 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `input_data_secret_name` | `str` | (required) | Secret for document corpus access (same key convention) |
 | `input_data_bucket_name` | `str` | (required) | Bucket containing source documents |
 | `input_data_keys` | `list[str]` | `[]` | Object keys or prefixes for the document corpus (1–10). See [Corpus locations](#corpus-locations). |
-| `maas_secret_name` | `str` | (required) | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`). Used for model validation, embeddings, generation, and judge calls. |
+| `maas_secret_name` | `str` | (required) | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`). Used for model validation, embeddings, generation, and Ragas evaluation. |
 | `vector_db_secret_name` | `str` | (required) | Vector DB Connection. Key prefix selects the backend: `MILVUS_*` (at least `MILVUS_URI`) or `PGVECTOR_*`. |
 | `graph_db_secret_name` | `str` | `""` | Graph DB Connection for the **Graph RAG** template. Empty for simple RAG. Required when Graph RAG is selected ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). v1 backend: **Neo4j** (`NEO4J_*` keys). |
 | `embedding_models` | `list[str]` | (required) | Non-empty list of embedding model ids for the search space. MaaS does not expose type metadata, so models cannot be inferred. |
 | `generation_models` | `list[str]` | (required) | Non-empty list of generation / foundation model ids for the search space. Same reason as `embedding_models`. |
-| `optimization_metric` | `str` | `overall_score` | GAM objective. Allowed: `faithfulness`, `answer_correctness`, `context_correctness`, `answer_relevance`, `overall_score`. Backends, judge selection, and score fields: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md). |
+| `optimization_metric` | `object` | `{ "name": "overall_score", "evaluator": "custom" }` | GAM objective `{name, evaluator}`. Allowed pairs and score fields: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). |
 | `optimization_max_rag_patterns` | `int` | `8` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
 
@@ -140,7 +140,7 @@ Secrets are Kubernetes Secret **names** (RHOAI Connections). Values are injected
 | Key | Role |
 |-----|------|
 | `MAAS_BASE_URL` | OpenAI-compatible MaaS gateway base URL |
-| `MAAS_API_KEY` | API key for discovery, embeddings, chat, and judge |
+| `MAAS_API_KEY` | API key for discovery, embeddings, chat, and Ragas evaluation |
 
 Mounted on `search_space_preparation`, `models_pre_selector`, and `rag_templates_optimization`.
 
@@ -283,7 +283,7 @@ Hybrid-only boolean on `pattern.json` under **`settings.chunking.include_metadat
 }
 ```
 
-ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric`. Sampling respects `max_combinations` and product search-space rules.
+ai4rag explores chunking and retrieval combinations during optimization; GAM selects the best pattern by `optimization_metric` ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). Sampling respects `max_combinations` and product search-space rules.
 
 ---
 
@@ -291,7 +291,7 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
-- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — `evaluation_results.json` `document_key`; benchmark field is defined above
+- [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metric catalog and `optimization_metric`; `evaluation_results.json` `document_key`; benchmark field is defined above
 - [Prompt tuning](./ODH-ADR-0006-prompt-tuning.md)
 - [MaaS support](./ODH-ADR-0007-maas-support.md) — MaaS, vector-DB, and graph-DB Connections
 - [documents_rag_optimization_pipeline](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)
