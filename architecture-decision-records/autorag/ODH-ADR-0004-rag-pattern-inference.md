@@ -418,7 +418,7 @@ The BFF runs retrieve-and-generate against the pattern's vector store and MaaS. 
 
 **POST** `/api/v1/pipeline-runs/:runId/patterns/:patternName/responses`
 
-The request body is the same **Responses create** subset a Playground / OGX client already sends. The Dashboard **pre-fills** it from `pattern.json`; the BFF **executes** the body (it does not re-derive those fields from the pattern).
+The request body is the same **Responses create** subset a Playground / OGX client already sends.
 
 ```json
 {
@@ -438,45 +438,6 @@ The request body is the same **Responses create** subset a Playground / OGX clie
   "stream": false
 }
 ```
-
-| Field | Required | Notes |
-|-------|----------|-------|
-| `input` | yes | User question (string). v1 does not accept a multi-part input array |
-| `model` | yes | Chat model id (MaaS). Pre-fill: `settings.generation.model_id` |
-| `instructions` | yes | System / developer message. Pre-fill: `settings.generation.system_message_text` |
-| `temperature` | no | Pre-fill: `settings.generation.temperature` |
-| `max_output_tokens` | no | Pre-fill: `settings.generation.max_completion_tokens` |
-| `tools` | yes | Exactly one tool: `type: file_search` |
-| `tools[0].vector_store_ids` | yes | Vector **collection name** (same string as `settings.vector_store_binding.collection_name`). Not an OGX vector-store id |
-| `tools[0].max_num_results` | no | Pre-fill: `settings.retrieval.number_of_chunks` |
-| `include` | no | Default `["file_search_call.results"]` so citations are present |
-| `stream` | no | Default `false`. v1 is non-streaming only |
-
-**Dashboard mapping** (`pattern.json` → create body):
-
-| `pattern.json` | Create field |
-|----------------|--------------|
-| `settings.generation.model_id` | `model` |
-| `settings.generation.system_message_text` | `instructions` |
-| `settings.generation.temperature` | `temperature` |
-| `settings.generation.max_completion_tokens` | `max_output_tokens` |
-| `settings.retrieval.number_of_chunks` | `tools[0].max_num_results` |
-| `settings.vector_store_binding.collection_name` | `tools[0].vector_store_ids[0]` |
-| user question | `input` |
-
-Unsupported create fields (`previous_response_id`, `web_search`, MCP, `store`, `reasoning`, multi-tool lists) return **400**. The BFF does not proxy OGX.
-
-**Inside the BFF**
-
-1. Load `pattern.json` from DSPA S3 (`…/rag_patterns/{patternName}/pattern.json`) for fields Responses does not carry.
-2. Embed `input` with MaaS (`settings.embedding.model_id`).
-3. Retrieve from the vector store: collection from `tools[0].vector_store_ids[0]`, k from `tools[0].max_num_results` (else pattern `number_of_chunks`). Provider, credentials, `search_mode`, and ranker still come from `settings.vector_store_binding` / `settings.retrieval` and the vector-DB Connection.
-4. Generate with MaaS `POST {MAAS_BASE_URL}/v1/chat/completions`: `model`, `instructions` → system message, `temperature`, `max_output_tokens`. Format chunks with `settings.generation.context_template_text` and `user_message_text` (`{reference_documents}`, `{question}` = `input`).
-5. Map retrieve + generate onto an OpenAI **Responses** object and return it in the BFF `{ "data": ... }` envelope.
-
-Request-body fields that exist on the OGX create call **win** (same as sending them to OGX). Pattern JSON supplies embedding, prompt templates, and retrieve mechanics that file_search does not express. The BFF **synthesizes** `file_search_call` from retrieved chunks; it does not call OGX `/v1/responses` or `/v1/models`.
-
-If the collection is missing or retrieve cannot talk to the store, return **409** with code `pattern_index_not_ready`. The full-corpus index must exist first ([Index building](#index-building)).
 
 **Response**
 
@@ -520,23 +481,7 @@ If the collection is missing or retrieve cannot talk to the store, return **409*
 ```
 
 UI: answer = message `output_text`; citations = `file_search_call.results`.
-
-| Source | Used for |
-|--------|----------|
-| `request.input` | `{question}` |
-| `request.model` | MaaS chat `model`; echoed as Response `model` |
-| `request.instructions` | Chat system message |
-| `request.temperature` / `max_output_tokens` | Sampling |
-| `request.tools[0].vector_store_ids[0]` | Collection to retrieve |
-| `request.tools[0].max_num_results` | k |
-| `settings.embedding.*` | Query embedding via MaaS |
-| `settings.vector_store_binding.provider_type` + Connection | Vector-store credentials and provider |
-| `settings.retrieval` (`search_mode`, ranker) | Retrieve mechanics not in file_search |
-| `settings.generation.context_template_text` / `user_message_text` | Chunk wrap and user message (`{reference_documents}`) |
-| Retrieved chunks | `{reference_documents}` and synthetic `file_search_call` |
-| Chat completion text | `output` message `output_text` |
-
-**In the loop:** Dashboard → AutoRAG BFF → MaaS + vector DB. **Not in the loop:** OGX, Studio, AgentProfile.
+**In the loop:** Dashboard → AutoRAG BFF → MaaS + vector DB. 
 
 ---
 
