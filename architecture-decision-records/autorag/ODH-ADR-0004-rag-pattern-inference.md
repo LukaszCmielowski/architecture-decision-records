@@ -21,7 +21,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 
 ## Goals
 
-* Define the target pattern.json schema (`settings`, `indexing`, `evaluation`; no `inference` block)
+* Define the target pattern.json schema (`settings`, `indexing`, `inference`, `evaluation`)
 * Document how `settings.generation` and `settings.retrieval` drive MaaS chat completions and LangChain retrieval
 * Document the inference notebook, parameterized starter-kit zip, Helm / BuildConfig deploy, and one-click Agent Sandbox
 * Document the AutoRAG BFF test endpoint (retrieve-and-generate from `pattern.json`; not the agent `/chat/completions` contract)
@@ -56,7 +56,7 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
 
 The **[`documents_rag_optimization_pipeline`](https://github.com/opendatahub-io/pipelines-components/blob/main/pipelines/training/autorag/documents_rag_optimization_pipeline/pipeline.py)** runs **`rag_templates_optimization`** to search RAG configurations and score each candidate on a benchmark (up to 1 GB document sample). Outputs land under **`rag_patterns/<pattern_subdir>/`** in DSPA storage (`<bucket>/<pipeline-name>/<run-id>/…`) plus a pipeline-wide HTML leaderboard.
 
-Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipeline spec), and **`evaluation`** results. The same `run_rag_optimization()` call in **ai4rag** writes notebooks and **`starter_kit.zip`** into that directory (see [Agentic Starter-kit](#agentic-starter-kit)). Index building processes the **full document corpus** (union of `input_data_keys` locations) into the vector store the pattern queries at inference time. Consumers assemble chat completions from `settings.generation`; they do **not** read an `inference` / `responses_template` object.
+Each **`pattern.json`** captures optimized **`settings`**, **`indexing`** (pipeline spec), **`inference`** (`runtime_spec`), and **`evaluation`** results. The same `run_rag_optimization()` call in **ai4rag** writes notebooks and **`starter_kit.zip`** into that directory (see [Agentic Starter-kit](#agentic-starter-kit)). Index building processes the **full document corpus** (union of `input_data_keys` locations) into the vector store the pattern queries at inference time. Chat completions are assembled from `settings.generation`. **`inference.runtime_spec`** is agent deployment (framework, protocol, image, env).
 
 ---
 
@@ -66,8 +66,8 @@ Canonical per-pattern inventory. Sibling ADRs link here instead of repeating thi
 
 | Artifact | Purpose |
 |----------|---------|
-| `pattern.json` | Authoritative record: `name`, `settings`, `indexing`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
-| `starter_kit.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for IDE work and Helm (`make deploy`). Built by ai4rag from **importable package resources** (same mechanism as the notebooks). One-click serving uses the prebuilt `autorag-inference` image, not this zip. |
+| `pattern.json` | Authoritative record: `name`, `settings`, `indexing`, `inference`, `evaluation`, `iteration`, `max_combinations`, `duration_seconds` |
+| `starter_kit.zip` | Parameterized [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) for IDE work and Helm (`make deploy`). Built by ai4rag from **importable package resources** (same mechanism as the notebooks). |
 | `indexing_notebook.ipynb`, `inference_notebook.ipynb` | Parameterized notebooks: full-corpus index vs retrieve-and-generate with a sample query |
 | `evaluation_results.json` | Per-question detail ([`evaluation_results.json`](./ODH-ADR-0005-rag-pattern-evaluation.md#evaluation_resultsjson)) |
 
@@ -109,7 +109,7 @@ pattern.json
 | `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time                                                                                                                                                                                                                                                                                     |
 | `settings`                                                  | Optimized RAG config: `vector_store_binding` (`provider_type`, `collection_name`), `chunking` (incl. `include_metadata`), `embedding`, `retrieval` (`method`, `number_of_chunks`, `search_mode`, ranker fields), `generation` (model, sampling, `context_template_text` / `user_message_text` / `system_message_text`, `language` `{code, name}`) |
 | `indexing.pipeline_spec`                                    | Managed indexing pipeline inputs — [Index building](#index-building)                                                                                                                                                                                                                                                                              |
-| `inference.runtime_spec`                                    | Agent deployment inputs (agent framework, agent protocol, runtime env vars and runtime image                                                                                                                                                                                                                                                      |
+| `inference.runtime_spec`                                    | Agent deployment: `framework`, `protocol`, `image`, `env_variables` — [One-click Deployment](#one-click-deployment)                                                                                                                                                                                                                               |
 | `evaluation`                                                | `metrics[]` aggregates. Catalog, evaluators, and GAM flag: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)                                                                                                                                                                                                                               |
 
 GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) name. Users do not supply an evaluator; name clashes resolve with **ragas first** ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
@@ -283,6 +283,29 @@ GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experi
         "batch_size"
       ]
     }
+  },
+  "inference": {
+    "runtime_spec": {
+      "framework": "langgraph",
+      "protocol": "chat.completions",
+      "image": "quay.io/opendatahub/odh-autorag-inference:odh-stable",
+      "env_variables": {
+        "maas_secret_name": "maas",
+        "vector_db_secret_name": "milvus",
+        "collection_name": "ai4rag_20260824161307_t2pxa4s3",
+        "embedding_model_id": "publishers/ai-eng-cracow/models/redhataibge-m3",
+        "generation_model_id": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic",
+        "temperature": 0.2,
+        "context_template_text": "Document {doc_number}:\n{document}",
+        "user_message_text": "\nContext:\n{reference_documents}\n\nQuestion: {question}\nRespond exclusively in English, regardless of any other language used in the provided context. You MUST respond in English.",
+        "system_message_text": "Please answer the user's question based solely on the provided context documents. If the question cannot be answered from the provided context, say you cannot answer. Your answer should be concise.",
+        "retrieval_method": "simple",
+        "number_of_chunks": 5,
+        "search_mode": "hybrid",
+        "ranker_strategy": "weighted",
+        "ranker_alpha": 0.5
+      }
+    }
   }
 }
 ```
@@ -309,7 +332,7 @@ Retrieve chunks first (LangChain adapter + `settings.retrieval` / `settings.vect
 |------|----------|--------|
 | [Inference notebook](#inference-notebook) | Data scientist | Inspect retrieve → generate in Jupyter with a sample query |
 | [Agentic Starter-kit](#agentic-starter-kit) | Developer | Download zip, customize code, `make run-app` / Helm `make deploy` |
-| [One-click Deployment](#one-click-deployment) | Operator / Dashboard | One-click default RAG: prebuilt `autorag-inference` image on [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) |
+| [One-click Deployment](#one-click-deployment) | Operator / Dashboard | One-click default RAG: prebuilt `odh-autorag-inference` image on [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) |
 | [Test endpoint](#test-endpoint) | Dashboard user | Interactive test of **this** pattern via the AutoRAG BFF |
 
 ### Inference notebook
@@ -352,22 +375,41 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 
 ### One-click Deployment
 
-**One-click** serving of the **default** RAG application: no zip unpack, no user image build. Dashboard (or API) starts a pod from the prebuilt **`autorag-inference`** image with env taken from `pattern.json` `settings` and project Connections. The image exposes the same contract as the kit: `POST /chat/completions`, `GET /health`.
+**One-click** serving of the **default** RAG application: no zip unpack, no user image build. Dashboard (or API) starts a pod from the prebuilt **`odh-autorag-inference`** image (`quay.io/opendatahub/odh-autorag-inference:odh-stable`; RHOAI: `registry.redhat.io/rhoai/odh-autorag-inference-rhel9`) with env from **`inference.runtime_spec.env_variables`** plus project Connections. The image exposes the same contract as the kit: `POST /chat/completions`, `GET /health`.
 
 Runtime is [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) (SIG Apps): a Kubernetes-native singleton with a stable hostname, optional persistent storage, hibernation (pause idle compute; resume on network activity), and scheduled deletion (TTL). Isolation is a cluster choice (standard containers, gVisor, or Kata) via `RuntimeClass`; AutoRAG does not ship a custom operator for this path.
 
 | Object | API | AutoRAG use |
 |--------|-----|-------------|
-| [`SandboxTemplate`](https://agent-sandbox.sigs.k8s.io/docs/getting_started/overview/) | `extensions.agents.x-k8s.io` | Reusable pod spec: `autorag-inference` image, ports, security context. `envVarsInjectionPolicy` must be `Allowed` or `Overrides` so a claim can set pattern env. |
+| [`SandboxTemplate`](https://agent-sandbox.sigs.k8s.io/docs/getting_started/overview/) | `extensions.agents.x-k8s.io` | Reusable pod spec: `odh-autorag-inference` image, ports, security context. `envVarsInjectionPolicy` must be `Allowed` or `Overrides` so a claim can set pattern env. |
 | `SandboxWarmPool` (optional) | `extensions.agents.x-k8s.io` | Pre-warms pods from the template for fast **adoption** when the claim sets **no** extra env. |
-| `SandboxClaim` | `extensions.agents.x-k8s.io` | Dashboard/user request. Injects pattern env via `spec.env` (same map as the zip `.env`). |
+| `SandboxClaim` | `extensions.agents.x-k8s.io` | Dashboard/user request. Injects `env_variables` via `spec.env`. |
 | `Sandbox` | `agents.x-k8s.io` | Bound instance. Stable hostname for `/chat/completions` callers. |
+
+**`env_variables`** is the inference counterpart of `indexing.pipeline_spec.parameters`: a named parameter object pre-filled from the optimization run and pattern `settings`. In `pattern.json` it may contain nested objects (same as `embedding_params` on indexing). Kubernetes env values are strings, so at inject time the Dashboard stringifies non-strings as compact JSON. Secret fields are **names only**.
+
+| `env_variables` key | Source | Role |
+|---------------------|--------|------|
+| `maas_secret_name` | optimization run | MaaS Connection (chat + query embeddings) |
+| `vector_db_secret_name` | optimization run | Vector-DB Connection |
+| `provider_type` | `settings.vector_store_binding` | Store backend (`milvus` / `pgvector`) |
+| `collection_name` | `settings.vector_store_binding` | Collection to retrieve |
+| `embedding_model_id` | `settings.embedding.model_id` | Query embedding model |
+| `embedding_params` | `settings.embedding.embedding_params` | Nested object in the pattern; compact JSON string in the Pod |
+| `generation_model_id` | `settings.generation.model_id` | Chat `model` |
+| `temperature`, `max_completion_tokens` | `settings.generation` | Sampling |
+| `system_message_text`, `user_message_text`, `context_template_text` | `settings.generation` | Prompt templates |
+| `retrieval_method` | `settings.retrieval.method` | Retriever |
+| `number_of_chunks` | `settings.retrieval` | k |
+| `search_mode`, `ranker_strategy`, `ranker_alpha` | `settings.retrieval` | Search / ranker |
+
+Do not inline Connection secret values. Do not duplicate the whole `settings` object as a single `RAG_PATTERN` env blob; the named keys above are the contract.
 
 **Env vs warm pool:** Agent Sandbox bakes env into the Pod at create time. A `SandboxClaim` that sets `spec.env` **cannot adopt** a warm-pool pod; the controller cold-starts from the template ([API: `SandboxClaim.spec.env`](https://agent-sandbox.sigs.k8s.io/docs/api/)). AutoRAG MVP accepts that: pattern settings differ per claim, so one-click is “prebuilt image + cold start from template,” still cheaper than `make build` / Helm. A later design can keep a generic image in the warm pool and supply `pattern.json` after start (no per-claim `spec.env`) if millisecond adopt is required.
 
 **Flow:** user selects a pattern (index already built) → Dashboard creates a `SandboxClaim` against the AutoRAG inference template → controller creates a `Sandbox` from the template with claim env + MaaS / vector-DB secrets → `GET /health` then `POST /chat/completions`. Python and Go [clients](https://agent-sandbox.sigs.k8s.io/docs/getting_started/overview/) can claim the same template without the UI.
 
-This is the default-app path. Edited starter-kit code uses Helm (`make deploy`). The kit's `make deploy-openshell` / `Containerfile.openshell` is a related isolated-runtime experiment; product one-click is Agent Sandbox + `autorag-inference`.
+This is the default-app path. Edited starter-kit code uses Helm (`make deploy`). The kit's `make deploy-openshell` / `Containerfile.openshell` is a related isolated-runtime experiment; product one-click is Agent Sandbox + `odh-autorag-inference`.
 
 ### Test endpoint
 
@@ -375,14 +417,6 @@ Dashboard **tests a pattern** through the AutoRAG BFF ([`packages/autorag/bff`](
 The BFF runs retrieve-and-generate against the pattern's vector store and MaaS. The HTTP request is a Responses **create** body (same fields an OGX / Playground client sends). It is **not** production serving.
 
 **POST** `/api/v1/pipeline-runs/:runId/patterns/:patternName/responses`
-
-Also mounted as `/autorag/api/v1/...` when federated. Middleware matches other BFF routes (identity, namespace, service access).
-
-| Query | Required | Role |
-|-------|----------|------|
-| `namespace` | yes | Project |
-| `maasSecretName` | yes | MaaS Connection (chat + query embeddings) |
-| `vectorDbSecretName` | no | Override; default from `indexing.pipeline_spec.parameters.vector_db_secret_name` |
 
 The request body is the same **Responses create** subset a Playground / OGX client already sends. The Dashboard **pre-fills** it from `pattern.json`; the BFF **executes** the body (it does not re-derive those fields from the pattern).
 
@@ -480,12 +514,7 @@ If the collection is missing or retrieve cannot talk to the store, return **409*
           }
         ]
       }
-    ],
-    "usage": {
-      "input_tokens": 412,
-      "output_tokens": 86,
-      "total_tokens": 498
-    }
+    ]
   }
 }
 ```
