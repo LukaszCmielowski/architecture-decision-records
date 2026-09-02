@@ -8,12 +8,12 @@
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHAISTRAT-1846](https://redhat.atlassian.net/browse/RHAISTRAT-1846) · [RHAISTRAT-1731](https://redhat.atlassian.net/browse/RHAISTRAT-1731) · [RHAISTRAT-1724](https://redhat.atlassian.net/browse/RHAISTRAT-1724) · [RHAISTRAT-1424](https://redhat.atlassian.net/browse/RHAISTRAT-1424) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
+| Tickets        | [RHAISTRAT-1846](https://redhat.atlassian.net/browse/RHAISTRAT-1846) · [RHAISTRAT-1731](https://redhat.atlassian.net/browse/RHAISTRAT-1731) · [RHAISTRAT-1724](https://redhat.atlassian.net/browse/RHAISTRAT-1724) · [RHAISTRAT-1424](https://redhat.atlassian.net/browse/RHAISTRAT-1424) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) · [RHOAIENG-90017](https://redhat.atlassian.net/browse/RHOAIENG-90017) |
 | Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0002-experiment-settings](./ODH-ADR-0002-experiment-settings.md) |
 
 ## What
 
-This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via MaaS (OpenAI-compatible chat completions) plus the LangChain vector store, three consumers of that contract (inference notebook, starter-kit zip with Helm, one-click Agent Sandbox), GenAI Studio as a separate OGX test backend, and full-corpus index building through the managed documents indexing pipeline.
+This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via MaaS (OpenAI-compatible chat completions) plus the pattern's vector store, three consumers of that contract (inference notebook, starter-kit zip with Helm, one-click Agent Sandbox), the AutoRAG BFF test endpoint (Responses-compatible), and full-corpus index building through the managed documents indexing pipeline.
 
 ## Why
 
@@ -24,7 +24,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 * Define the target pattern.json schema (`settings`, `indexing`, `evaluation`; no `inference` block)
 * Document how `settings.generation` and `settings.retrieval` drive MaaS chat completions and LangChain retrieval
 * Document the inference notebook, parameterized starter-kit zip, Helm / BuildConfig deploy, and one-click Agent Sandbox
-* Document GenAI Studio as an OGX-based test path (not the agent `/chat/completions` contract)
+* Document the AutoRAG BFF test endpoint (retrieve-and-generate from `pattern.json`; not the agent `/chat/completions` contract)
 * Document indexing.pipeline_spec for the managed documents-indexing-pipeline
 
 ## Non-Goals
@@ -34,7 +34,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 
 ## How
 
-This page describes **AutoRAG patterns** after optimization: the **`pattern.json`** schema, **retrieve and generation** via **MaaS** and the pattern's vector-store binding (notebook, starter-kit zip with Helm, one-click Agent Sandbox), **GenAI Studio** as a separate **OGX** test backend, and **index building** into the production vector store.
+This page describes **AutoRAG patterns** after optimization: the **`pattern.json`** schema, **retrieve and generation** via **MaaS** and the pattern's vector-store binding (notebook, starter-kit zip with Helm, one-click Agent Sandbox), the **BFF test endpoint**, and **index building** into the production vector store.
 
 ## Table of contents
 
@@ -46,7 +46,7 @@ This page describes **AutoRAG patterns** after optimization: the **`pattern.json
   - [Inference notebook](#inference-notebook)
   - [Agentic Starter-kit](#agentic-starter-kit)
   - [One-click Deployment](#one-click-deployment)
-  - [GenAI Studio integration](#genai-studio-integration)
+  - [Test endpoint](#test-endpoint)
 - [Index building](#index-building)
 - [Related](#related)
 
@@ -91,6 +91,12 @@ pattern.json
 │       ├── pipeline_name
 │       ├── parameters
 │       └── overrides_allowed
+├── inference
+│   └── runtime_spec
+│       ├── framework
+│       ├── protocol
+│       ├── image
+│       └── env_variables
 └── evaluation
     └── metrics[]
         ├── evaluator (unitxt | ragas | custom), name, description, scores (mean, ci_low, ci_high)
@@ -98,16 +104,15 @@ pattern.json
         └── optimization_metric: true (exactly one entry — GAM objective)
 ```
 
-| Field | Description |
-|-------|-------------|
-| `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time |
-| `settings` | Optimized RAG config: `vector_store_binding` (`provider_type`, `collection_name`), `chunking` (incl. `include_metadata`), `embedding`, `retrieval` (`method`, `number_of_chunks`, `search_mode`, ranker fields), `generation` (model, sampling, `context_template_text` / `user_message_text` / `system_message_text`, `language` `{code, name}`) |
-| `indexing.pipeline_spec` | Managed indexing pipeline inputs — [Index building](#index-building) |
-| `evaluation` | `metrics[]` aggregates. Catalog, evaluators, and GAM flag: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) |
+| Field                                                       | Description                                                                                                                                                                                                                                                                                                                                       |
+|-------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`, `iteration`, `max_combinations`, `duration_seconds` | Pattern identity, GAM iteration, search-space size, wall time                                                                                                                                                                                                                                                                                     |
+| `settings`                                                  | Optimized RAG config: `vector_store_binding` (`provider_type`, `collection_name`), `chunking` (incl. `include_metadata`), `embedding`, `retrieval` (`method`, `number_of_chunks`, `search_mode`, ranker fields), `generation` (model, sampling, `context_template_text` / `user_message_text` / `system_message_text`, `language` `{code, name}`) |
+| `indexing.pipeline_spec`                                    | Managed indexing pipeline inputs — [Index building](#index-building)                                                                                                                                                                                                                                                                              |
+| `inference.runtime_spec`                                    | Agent deployment inputs (agent framework, agent protocol, runtime env vars and runtime image                                                                                                                                                                                                                                                      |
+| `evaluation`                                                | `metrics[]` aggregates. Catalog, evaluators, and GAM flag: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)                                                                                                                                                                                                                               |
 
-`pattern.json` has **no** `inference` object and **no** `responses_template`. Prompt text lives only under `settings.generation`.
-
-GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) parameter and optional `optimization_evaluator`. Semantics, defaults, and omitted-evaluator resolution: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
+GAM ranks patterns by the pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) name. Users do not supply an evaluator; name clashes resolve with **ragas first** ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)). The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score.
 
 ---
 
@@ -298,13 +303,14 @@ Assemble the chat request from **`settings.generation`**:
 | `context_template_text` | Per-chunk formatting (`{doc_number}`, `{document}`) |
 | `user_message_text` | User message (`{reference_documents}`, `{question}`) |
 
-Retrieve chunks first (LangChain adapter + `settings.retrieval` / `settings.vector_store_binding`), then pass chunk texts into generation. Three consumers share that contract, all parameterized from the same `pattern.json` `settings`. The full-corpus index must exist first ([Index building](#index-building)). [GenAI Studio](#genai-studio-integration) is documented after those paths: it is a separate **OGX** test backend, not a fourth caller of the agent API.
+Retrieve chunks first (LangChain adapter + `settings.retrieval` / `settings.vector_store_binding`), then pass chunk texts into generation. Three consumers share that `/chat/completions` contract, all parameterized from the same `pattern.json` `settings`. The full-corpus index must exist first ([Index building](#index-building)). The [Test endpoint](#test-endpoint) runs the same retrieve-then-generate **inside the AutoRAG BFF** and returns a synthesized Responses object; it is not a caller of the agent API.
 
 | Path | Audience | Intent |
 |------|----------|--------|
 | [Inference notebook](#inference-notebook) | Data scientist | Inspect retrieve → generate in Jupyter with a sample query |
 | [Agentic Starter-kit](#agentic-starter-kit) | Developer | Download zip, customize code, `make run-app` / Helm `make deploy` |
 | [One-click Deployment](#one-click-deployment) | Operator / Dashboard | One-click default RAG: prebuilt `autorag-inference` image on [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) |
+| [Test endpoint](#test-endpoint) | Dashboard user | Interactive test of **this** pattern via the AutoRAG BFF |
 
 ### Inference notebook
 
@@ -322,7 +328,7 @@ The notebook is instantiated from a template and pre-filled from `pattern.json`.
 
 ### Agentic Starter-kit
 
-`starter_kit.zip` is the **downloadable, editable** agent: LangGraph orchestration in `src/agentic_rag`, FastAPI in `main.py` (`POST /chat/completions`, `GET /health`), in-app chat UI at `GET /` (`playground/`), plus `Makefile`, `Dockerfile`, Helm chart, and `.env.example`. That `GET /` UI is local to the kit; it is not GenAI Studio.
+`starter_kit.zip` is the **downloadable, editable** agent: LangGraph orchestration in `src/agentic_rag`, FastAPI in `main.py` (`POST /chat/completions`, `GET /health`), in-app chat UI at `GET /` (`playground/`), plus `Makefile`, `Dockerfile`, Helm chart, and `.env.example`. That `GET /` UI is local to the kit; it is not the Dashboard [test endpoint](#test-endpoint).
 
 **Generation.** ai4rag owns the kit as **package resources** (an importable file tree with placeholders), the same way it owns notebook templates. `run_rag_optimization()` copies that tree, fills placeholders from the pattern's `settings`, and writes **`starter_kit.zip`** next to `pattern.json`. There is no unpublished zip of the base kit. Layout and prompts stay aligned with the [agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag); ai4rag is the copy used at optimize time so filled settings match the zip. `rag_templates_optimization` stays a thin wrapper: no extra KFP component.
 
@@ -363,25 +369,145 @@ Runtime is [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) (SIG Apps): 
 
 This is the default-app path. Edited starter-kit code uses Helm (`make deploy`). The kit's `make deploy-openshell` / `Containerfile.openshell` is a related isolated-runtime experiment; product one-click is Agent Sandbox + `autorag-inference`.
 
-### GenAI Studio integration
+### Test endpoint
 
-GenAI Studio is **not** a consumer of the agent contract (`POST /chat/completions` on `autorag-inference` or the starter-kit). It is an interactive **test** path: AutoRAG Dashboard materializes an AgentProfile from `pattern.json`, and Studio runs retrieve-and-generate on its **OGX** backend.
+Dashboard **tests a pattern** through the AutoRAG BFF ([`packages/autorag/bff`](https://github.com/opendatahub-io/odh-dashboard/tree/main/packages/autorag/bff)).
+The BFF runs retrieve-and-generate against the pattern's vector store and MaaS. The HTTP request is a Responses **create** body (same fields an OGX / Playground client sends). It is **not** production serving.
 
-OGX is a different stack from MaaS + LangChain (notebook) and from LangGraph FastAPI (zip / one-click). Answers can differ from those paths even with the same `pattern.json`. That is expected.
+**POST** `/api/v1/pipeline-runs/:runId/patterns/:patternName/responses`
 
-Persistence uses the AgentProfile schema ([RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608); [schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca)). Dashboard copies **vector-store, retrieval, and generation** from `pattern.json` into that profile:
+Also mounted as `/autorag/api/v1/...` when federated. Middleware matches other BFF routes (identity, namespace, service access).
 
-| `pattern.json` | AgentProfile |
+| Query | Required | Role |
+|-------|----------|------|
+| `namespace` | yes | Project |
+| `maasSecretName` | yes | MaaS Connection (chat + query embeddings) |
+| `vectorDbSecretName` | no | Override; default from `indexing.pipeline_spec.parameters.vector_db_secret_name` |
+
+The request body is the same **Responses create** subset a Playground / OGX client already sends. The Dashboard **pre-fills** it from `pattern.json`; the BFF **executes** the body (it does not re-derive those fields from the pattern).
+
+```json
+{
+  "model": "publishers/ai-eng-cracow/models/qwen3-8b-fp8-dynamic",
+  "input": "What is the refund policy for premium accounts?",
+  "instructions": "Please answer the user's question based solely on the provided context documents. If the question cannot be answered from the provided context, say you cannot answer. Your answer should be concise.",
+  "temperature": 0.2,
+  "max_output_tokens": 2048,
+  "tools": [
+    {
+      "type": "file_search",
+      "vector_store_ids": ["ai4rag_20260824161307_t2pxa4s3"],
+      "max_num_results": 5
+    }
+  ],
+  "include": ["file_search_call.results"],
+  "stream": false
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `input` | yes | User question (string). v1 does not accept a multi-part input array |
+| `model` | yes | Chat model id (MaaS). Pre-fill: `settings.generation.model_id` |
+| `instructions` | yes | System / developer message. Pre-fill: `settings.generation.system_message_text` |
+| `temperature` | no | Pre-fill: `settings.generation.temperature` |
+| `max_output_tokens` | no | Pre-fill: `settings.generation.max_completion_tokens` |
+| `tools` | yes | Exactly one tool: `type: file_search` |
+| `tools[0].vector_store_ids` | yes | Vector **collection name** (same string as `settings.vector_store_binding.collection_name`). Not an OGX vector-store id |
+| `tools[0].max_num_results` | no | Pre-fill: `settings.retrieval.number_of_chunks` |
+| `include` | no | Default `["file_search_call.results"]` so citations are present |
+| `stream` | no | Default `false`. v1 is non-streaming only |
+
+**Dashboard mapping** (`pattern.json` → create body):
+
+| `pattern.json` | Create field |
 |----------------|--------------|
-| `settings.vector_store_binding` (`provider_type`, `collection_name`) | Vector-store binding |
-| `indexing.pipeline_spec.parameters.vector_db_secret_name` | Vector-DB Connection **name** (secret reference; credentials stay on the Connection) |
-| `settings.retrieval` (`method`, `number_of_chunks`, `search_mode`, `ranker_strategy`, `ranker_alpha`) | Retrieval |
-| `settings.generation` (`model_id`, `temperature`, `max_completion_tokens`, `system_message_text`, `user_message_text`, `context_template_text`, `language`) | Generation |
+| `settings.generation.model_id` | `model` |
+| `settings.generation.system_message_text` | `instructions` |
+| `settings.generation.temperature` | `temperature` |
+| `settings.generation.max_completion_tokens` | `max_output_tokens` |
+| `settings.retrieval.number_of_chunks` | `tools[0].max_num_results` |
+| `settings.vector_store_binding.collection_name` | `tools[0].vector_store_ids[0]` |
+| user question | `input` |
 
-1. Pipeline stores `pattern.json` under the pattern subdirectory.
-2. User selects a pattern and (if needed) runs [index building](#index-building).
-3. AutoRAG Dashboard persists an AgentProfile (ConfigMap) from the fields above.
-4. The AgentProfile is opened in Studio and wired to Studio's OGX backend.
+Unsupported create fields (`previous_response_id`, `web_search`, MCP, `store`, `reasoning`, multi-tool lists) return **400**. The BFF does not proxy OGX.
+
+**Inside the BFF**
+
+1. Load `pattern.json` from DSPA S3 (`…/rag_patterns/{patternName}/pattern.json`) for fields Responses does not carry.
+2. Embed `input` with MaaS (`settings.embedding.model_id`).
+3. Retrieve from the vector store: collection from `tools[0].vector_store_ids[0]`, k from `tools[0].max_num_results` (else pattern `number_of_chunks`). Provider, credentials, `search_mode`, and ranker still come from `settings.vector_store_binding` / `settings.retrieval` and the vector-DB Connection.
+4. Generate with MaaS `POST {MAAS_BASE_URL}/v1/chat/completions`: `model`, `instructions` → system message, `temperature`, `max_output_tokens`. Format chunks with `settings.generation.context_template_text` and `user_message_text` (`{reference_documents}`, `{question}` = `input`).
+5. Map retrieve + generate onto an OpenAI **Responses** object and return it in the BFF `{ "data": ... }` envelope.
+
+Request-body fields that exist on the OGX create call **win** (same as sending them to OGX). Pattern JSON supplies embedding, prompt templates, and retrieve mechanics that file_search does not express. The BFF **synthesizes** `file_search_call` from retrieved chunks; it does not call OGX `/v1/responses` or `/v1/models`.
+
+If the collection is missing or retrieve cannot talk to the store, return **409** with code `pattern_index_not_ready`. The full-corpus index must exist first ([Index building](#index-building)).
+
+**Response**
+
+```json
+{
+  "data": {
+    "id": "resp_bff_01HZX...",
+    "object": "response",
+    "created_at": 1770000000,
+    "status": "completed",
+    "model": "granite-3.3-8b-instruct",
+    "output": [
+      {
+        "id": "fs_1",
+        "type": "file_search_call",
+        "status": "completed",
+        "queries": ["What is the refund policy for premium accounts?"],
+        "results": [
+          {
+            "filename": "bank_policies.pdf",
+            "text": "Premium accounts may request a refund within 14 days...",
+            "score": 0.82
+          }
+        ]
+      },
+      {
+        "id": "msg_1",
+        "type": "message",
+        "role": "assistant",
+        "status": "completed",
+        "content": [
+          {
+            "type": "output_text",
+            "text": "Premium accounts can request a refund within 14 days..."
+          }
+        ]
+      }
+    ],
+    "usage": {
+      "input_tokens": 412,
+      "output_tokens": 86,
+      "total_tokens": 498
+    }
+  }
+}
+```
+
+UI: answer = message `output_text`; citations = `file_search_call.results`.
+
+| Source | Used for |
+|--------|----------|
+| `request.input` | `{question}` |
+| `request.model` | MaaS chat `model`; echoed as Response `model` |
+| `request.instructions` | Chat system message |
+| `request.temperature` / `max_output_tokens` | Sampling |
+| `request.tools[0].vector_store_ids[0]` | Collection to retrieve |
+| `request.tools[0].max_num_results` | k |
+| `settings.embedding.*` | Query embedding via MaaS |
+| `settings.vector_store_binding.provider_type` + Connection | Vector-store credentials and provider |
+| `settings.retrieval` (`search_mode`, ranker) | Retrieve mechanics not in file_search |
+| `settings.generation.context_template_text` / `user_message_text` | Chunk wrap and user message (`{reference_documents}`) |
+| Retrieved chunks | `{reference_documents}` and synthetic `file_search_call` |
+| Chat completion text | `output` message `output_text` |
+
+**In the loop:** Dashboard → AutoRAG BFF → MaaS + vector DB. **Not in the loop:** OGX, Studio, AgentProfile.
 
 ---
 
@@ -411,9 +537,8 @@ Index building populates the production vector store via the managed **`document
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — simple vs Neo4j Graph RAG templates; which kit path each maps to
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, corpus list, benchmark JSON, presets, chunking, retrieval, HPO MaaS / vector Connections
 - [MLflow integration](./ODH-ADR-0006-mlflow-integration.md) — tracking pointers to pattern artifacts
-- [RHOAIENG-64608](https://redhat.atlassian.net/browse/RHOAIENG-64608) — AgentProfile schema for Gen AI Studio
-- [AgentProfile schema proposal](https://gist.github.com/NickGagan/cd3028256ca7601e32160a72ddf1e7ca) — ConfigMap / `profile.yaml` example and field definitions
-- [OGX](https://ogx-ai.github.io/docs) — Studio test backend (not the one-click / zip agent)
+- [RHOAIENG-90017](https://redhat.atlassian.net/browse/RHOAIENG-90017) — AutoRAG BFF pattern test
+- [opendatahub-io/odh-dashboard AutoRAG BFF](https://github.com/opendatahub-io/odh-dashboard/tree/main/packages/autorag/bff)
 - [Agentic RAG starter-kit](https://github.com/red-hat-data-services/agentic-starter-kits/tree/main/agents/langgraph/templates/agentic_rag) — zip generation template
 - [Agent Sandbox](https://agent-sandbox.sigs.k8s.io/docs/) — one-click `Sandbox` / `SandboxTemplate` / `SandboxClaim` / `SandboxWarmPool`
 - [Agent Sandbox API](https://agent-sandbox.sigs.k8s.io/docs/api/) — `SandboxClaim.spec.env` cold-start behavior

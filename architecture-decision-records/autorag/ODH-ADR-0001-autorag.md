@@ -130,7 +130,7 @@ At the architectural level:
 | -------- | ---- |
 | **Optimize** | Emit portable RAG patterns (settings, indexing spec, evaluation) |
 | **Index** | Full-corpus indexing from the pattern record (managed pipeline or notebook) |
-| **Infer / deploy** | Retrieve-and-generate from `settings` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)): notebook, Helm zip, or one-click Agent Sandbox. GenAI Studio is a separate OGX test path, not the agent contract. |
+| **Infer / deploy** | Retrieve-and-generate from `settings` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)): notebook, Helm zip, or one-click Agent Sandbox. Dashboard tests a pattern via the AutoRAG BFF ([test endpoint](./ODH-ADR-0004-rag-pattern-inference.md#test-endpoint)); that path is not the agent contract. |
 
 ### Scope (Tech Preview)
 

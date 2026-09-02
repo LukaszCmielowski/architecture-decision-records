@@ -13,7 +13,7 @@
 
 ## What
 
-This ADR defines AutoRAG / ai4rag RAG templates: the reusable retrieve-and-generate blueprints parameterized during optimization. It covers the shipping simple RAG template, planned Neo4j Graph RAG, and which template maps to which starter-kit path. Serving (Helm, one-click, notebooks, Studio): [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation).
+This ADR defines AutoRAG / ai4rag RAG templates: the reusable retrieve-and-generate blueprints parameterized during optimization. It covers the shipping simple RAG template, planned Neo4j Graph RAG, and which template maps to which starter-kit path. Serving (Helm, one-click, notebooks, BFF test): [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation).
 
 ## Why
 
@@ -283,7 +283,7 @@ Start Graph RAG with **fixed** `retriever_type=hybrid_cypher` for smoke tests; t
 
 ## Template-to-deployment mapping
 
-How to **serve** a pattern (notebook, zip + Helm, one-click Agent Sandbox, Studio OGX test): [ODH-ADR-0004 — Retrieve and generation](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation). Zip/Helm: [Agentic Starter-kit](./ODH-ADR-0004-rag-pattern-inference.md#agentic-starter-kit). One-click: [One-click Deployment](./ODH-ADR-0004-rag-pattern-inference.md#one-click-deployment).
+How to **serve** a pattern (notebook, zip + Helm, one-click Agent Sandbox, BFF test endpoint): [ODH-ADR-0004 — Retrieve and generation](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation). Zip/Helm: [Agentic Starter-kit](./ODH-ADR-0004-rag-pattern-inference.md#agentic-starter-kit). One-click: [One-click Deployment](./ODH-ADR-0004-rag-pattern-inference.md#one-click-deployment). Test: [Test endpoint](./ODH-ADR-0004-rag-pattern-inference.md#test-endpoint).
 
 This ADR only records **which template** maps to which starter-kit path.
 
@@ -299,7 +299,7 @@ This ADR only records **which template** maps to which starter-kit path.
 ## Related
 
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — search-space dimensions for the current template
-- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — artifacts, `pattern.json`, retrieve / generate, Helm, one-click Agent Sandbox, Studio OGX test
+- [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — artifacts, `pattern.json`, retrieve / generate, Helm, one-click Agent Sandbox, BFF test endpoint
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — benchmark metrics
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [neo4j-graphrag — User Guide: RAG](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)

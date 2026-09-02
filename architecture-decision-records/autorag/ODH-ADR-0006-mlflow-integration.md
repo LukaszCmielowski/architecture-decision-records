@@ -59,7 +59,7 @@ One parent run per KFP pipeline execution; one nested child run per RAG pattern 
 | MLflow concept | Proposed mapping |
 |----------------|------------------|
 | **Experiment** | Use KFP-managed experiment (`MLFLOW_EXPERIMENT_ID`). Otherwise: e.g. `autorag_documents_rag_optimization` plus optional suffix. |
-| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_evaluator` (when set), `optimization_max_rag_patterns`, `vector_db_secret_name`, `graph_db_secret_name` (when set), `image`, `kfp_version`, `ai4rag_version`. |
+| **Parent run** | Resume KFP parent (`MLFLOW_RUN_ID`). **Tags:** `kfp_run_id`, `kfp_run_name`, `pipeline_name`, dataset hashes or URIs (non-secret). **Params:** `preset`, `optimization_metric`, `optimization_max_rag_patterns`, `vector_db_secret_name`, `graph_db_secret_name` (when set), `image`, `kfp_version`, `ai4rag_version`. |
 | **Child runs** | One nested child run per RAG pattern (folder name or `pattern.json` `name`). Enables side-by-side comparison of Unitxt / Ragas / custom metrics and chunking / retrieval / model choices. |
 | **Traces** | **Required** when `MLFLOW_TRACKING_URI` is set. One trace per benchmark request, attached to the pattern child run. P patterns x N benchmark rows = P x N traces total. |
 | **Spans** | **Required** under each trace: `autorag.retrieval`, `autorag.generation`, `autorag.evaluation` with MLflow `SpanType` where applicable. Generation may include nested spans from `mlflow.openai.autolog()` for MaaS chat completions. |

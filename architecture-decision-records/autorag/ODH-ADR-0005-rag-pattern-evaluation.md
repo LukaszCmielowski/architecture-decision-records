@@ -13,7 +13,7 @@
 
 ## What
 
-This ADR documents how AutoRAG / ai4rag scores RAG patterns during rag_templates_optimization: Unitxt and Ragas metric backends, the GAM objective (`optimization_metric` + `optimization_evaluator`), aggregates in pattern.json, row-level evaluation_results.json, and document identity by object key (`document_key`). Benchmark input fields live in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json).
+This ADR documents how AutoRAG / ai4rag scores RAG patterns during rag_templates_optimization: Unitxt and Ragas metric backends, the GAM objective (`optimization_metric`), aggregates in pattern.json, row-level evaluation_results.json, and document identity by object key (`document_key`). Benchmark input fields live in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json).
 
 ## Why
 
@@ -21,14 +21,13 @@ Comparable, standardized metrics are required for GAM ranking and for users to t
 
 ## Goals
 
-* Define the metric set computed every optimization run (`unitxt`, `ragas`, `custom`) and that callers select only the GAM objective from that set
-* Specify GAM objective as `optimization_metric` plus optional `optimization_evaluator`
+* Specify GAM objective as `optimization_metric`. 
 * Specify evaluation aggregates in pattern.json and per-row evaluation_results.json
 * Identify retrieved context by `document_key` (object key)
 
 ## Non-Goals
 
-* Search-space dimensions and pipeline parameters other than `optimization_metric` / `optimization_evaluator` (see ODH-ADR-0002)
+* Search-space dimensions and pipeline parameters other than `optimization_metric` (see ODH-ADR-0002)
 
 ## How
 
@@ -46,7 +45,7 @@ Comparable, standardized metrics are required for GAM ranking and for users to t
 During **`rag_templates_optimization`**, ai4rag scores each RAG pattern on a benchmark.
 
 * **All catalog metrics from all evaluators are computed every run** (Unitxt, Ragas, and `overall_score`). Callers do not enable or disable evaluators or individual metrics.
-* The only user choice is **`optimization_metric`** (required) and optional **`optimization_evaluator`**: which one catalog pair GAM uses to rank patterns. Default metric: `overall_score` (resolves to `custom` when evaluator is omitted).
+* The user chooses only **`optimization_metric`** (default `overall_score`). They do not provide an evaluator. The pipeline resolves the evaluator from the catalog: if several evaluators define the same name, **ragas** is first; otherwise the sole evaluator for that name (today: `faithfulness` → ragas; `answer_correctness` / `context_correctness` → unitxt; `overall_score` → custom).
 * Aggregates land in **`pattern.json`** → `evaluation.metrics[]` ([schema](./ODH-ADR-0004-rag-pattern-inference.md#patternjson)).
 * Per-row detail lands in **`evaluation_results.json`**.
 
@@ -56,7 +55,7 @@ Per-question values are **0–1** floats. At pattern level, each `metrics[]` ent
 
 ## Metric catalog
 
-This full set is computed every optimization run. The user selects only which pair is the GAM objective ([optimization_metric](#optimization_metric); `optimization_evaluator` optional).
+This full set is computed every optimization run. The user selects only the metric **name** GAM ranks on ([optimization_metric](#optimization_metric)). Evaluator is resolved, not supplied.
 
 **Unitxt** (`evaluator: "unitxt"`)
 
@@ -87,16 +86,7 @@ Unitxt `faithfulness` and Ragas `faithfulness` share a **name**. Disambiguate wi
 
 ## optimization_metric
 
-Pipeline and experiment input ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md)):
-
-```json
-{
-  "optimization_metric": "faithfulness",
-  "optimization_evaluator": "ragas"
-}
-```
-
-`optimization_evaluator` is optional:
+Pipeline and experiment input is a metric **name** only ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md)). Users do not pass an evaluator.
 
 ```json
 {
@@ -106,10 +96,10 @@ Pipeline and experiment input ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings
 
 Rules:
 
-* Every run still computes the **full catalog** (all Unitxt, all Ragas, and `overall_score`). These parameters do not subset evaluation.
-* When `optimization_evaluator` is set, `optimization_metric` + `optimization_evaluator` must be a pair from the [catalog](#metric-catalog) and must match exactly one `evaluation.metrics[]` entry.
-* When `optimization_evaluator` is omitted, resolve the evaluator from the catalog: if the metric name exists on more than one evaluator, **ragas** wins; otherwise use the only evaluator that defines that name. Today that means `faithfulness` → `ragas`; `answer_correctness` / `context_correctness` → `unitxt`; `overall_score` → `custom`.
-* The resolved pair is the only `metrics[]` entry with `optimization_metric: true`. GAM uses its `scores.mean`. Artifacts still record `evaluator` on every score row.
+* Every run still computes the **full catalog** (all Unitxt, all Ragas, and `overall_score`). `optimization_metric` does not subset evaluation.
+* Resolve the evaluator from the catalog. Fallback when the same name exists on more than one evaluator: **ragas first**. Otherwise use the only evaluator that defines that name.
+* Today: `faithfulness` → `ragas`; `answer_correctness` / `context_correctness` → `unitxt`; `overall_score` → `custom`.
+* The resolved pair is the only `metrics[]` entry with `optimization_metric: true`. GAM uses its `scores.mean`. Artifacts still record `evaluator` on every score row so Unitxt and Ragas `faithfulness` stay distinct.
 
 Default:
 
@@ -119,7 +109,7 @@ Default:
 }
 ```
 
-(`optimization_evaluator` omitted → `custom`.)
+(resolves to `evaluator: "custom"`.)
 
 ---
 
@@ -209,7 +199,7 @@ KFP **`evaluation_results.json`** is the source of truth for row-level scores an
 
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) — full `pattern.json` schema and artifact layout
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — current simple template vs planned Graph RAG
-- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — `optimization_metric` / `optimization_evaluator`; corpus list; benchmark JSON (`correct_answer_document_keys`)
+- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — `optimization_metric`; corpus list; benchmark JSON (`correct_answer_document_keys`)
 - [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md)
 - [ai4rag evaluation guide](https://github.com/IBM/ai4rag/blob/main/docs/user-guide/evaluation.md)
 - [pipelines-components PR #204](https://github.com/opendatahub-io/pipelines-components/pull/204) — Ragas wiring on `rag_templates_optimization`
