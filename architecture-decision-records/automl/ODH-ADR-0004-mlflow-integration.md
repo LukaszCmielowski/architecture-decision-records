@@ -4,11 +4,11 @@
 | -------------- | ---------- |
 | Date           | 2026-08-25 |
 | Scope          | AutoML |
-| Status         | Draft |
+| Status         | Approved |
 | Authors        | [Lukasz Cmielowski](@LukaszCmielowski) |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | |
+| Tickets        | [RHAISTRAT-1493](https://redhat.atlassian.net/browse/RHAISTRAT-1493) |
 | Other docs:    | none |
 
 ## What
