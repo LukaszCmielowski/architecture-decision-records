@@ -133,7 +133,7 @@ The KFP components planned to be delivered for the KFP pipeline implementation.
    - Model Selection
    - Model Refitting
    - Leaderboard Evaluation
-   - Notebook Generation
+   - Notebook Generation (per-model predictor notebooks plus the run-level experiment notebook)
 
 Model Registry registration and KServe deployment are platform / Dashboard flows outside the training pipeline.
 
@@ -180,6 +180,8 @@ For each pipeline run, AutoML generates:
    - Model building and selection process
    - Leaderboard of models ranked by performance
    - Links to remaining artifacts
+
+5. **Experiment notebook** (single, run-level): KFP artifact `experiment_notebook` containing `automl_experiment_notebook.ipynb`. Written by the tabular and time-series training components after the run. Pre-filled with that run’s data locations, task settings, and optional external test data. Download and run locally to resubmit the pipeline, monitor the run, fetch artifacts, and review the leaderboard. Distinct from per-model predictor notebooks ([ODH-ADR-0003](./ODH-ADR-0003-model-insights.md)). See [pipelines-components#235](https://github.com/opendatahub-io/pipelines-components/pull/235).
 
 
 ### Supported Features
@@ -267,6 +269,7 @@ Status: Tech Preview
 
 * [AutoGluon GitHub Repository](https://github.com/autogluon/autogluon)
 * [Kubeflow Pipelines Components](https://github.com/red-hat-data-services/pipelines-components)
+* [opendatahub-io/pipelines-components#235 — experiment notebook](https://github.com/opendatahub-io/pipelines-components/pull/235)
 * [RHOAI Connections API ADR](/architecture-decision-records/operator/ODH-ADR-Operator-0009-connection-api.md)
 * AutoML sibling ADRs:
   * [ODH-ADR-0002 — Experiment settings](./ODH-ADR-0002-experiment-settings.md)

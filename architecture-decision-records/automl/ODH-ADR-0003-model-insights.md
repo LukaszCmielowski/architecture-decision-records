@@ -70,6 +70,8 @@ One combined **`Model`** artifact from **`autogluon_models_training`** (`models_
 
 **`metadata`:** `model_names` (JSON **string** list, KFP workaround) and **`context`** (`task_type`, `label_column`, `model_config`, `data_config`, `models` mirroring each `model.json`). Returned **`eval_metric`** wires the leaderboard sort column.
 
+The run-level launcher notebook is a separate KFP artifact (`experiment_notebook` → `automl_experiment_notebook.ipynb`), not under `{model_name}_FULL/`. See [ODH-ADR-0001](./ODH-ADR-0001-automl.md#artifacts-generated).
+
 **`curves.json` alignment:** serializes `sklearn.metrics.roc_curve()` / `precision_recall_curve()` outputs from probabilities via `predictor.predict_proba(X_test)`. **Regression** runs do not emit this file.
 
 ### Example: `model.json` (tabular)
@@ -447,7 +449,7 @@ Per-class baselines shown as horizontal lines at respective precision values
 | `metrics/back_testing.json` | Multi-window backtest: per-window metrics and forecast detail for best/worst series (from AutoGluon backtest / cutoff evaluation). |
 | `predictor/` | Saved **`TimeSeriesPredictor`**. |
 | `predictor/predictor_metadata.json` | Model id, **`prediction_length`**, **`eval_metric`**, **`target`**, **`id_column`**, **`timestamp_column`**. |
-| `notebooks/automl_predictor_notebook.ipynb` | **`timeseries_notebook.ipynb`** template with run / pipeline / model / sample / column placeholders. |
+| `notebooks/automl_predictor_notebook.ipynb` | **`timeseries_notebook.ipynb`** template with run / pipeline / model / sample / column placeholders. Run-level experiment notebook is not here; see [ODH-ADR-0001](./ODH-ADR-0001-automl.md#artifacts-generated). |
 | `model.json` | Same core fields as tabular **`inference`**; optional **`location.back_testing`**. See [Example: `model.json` (time series)](#example-modeljson-time-series). |
 
 **No** `feature_importance.json`, `confusion_matrix.json`, or `curves.json` for time-series.
