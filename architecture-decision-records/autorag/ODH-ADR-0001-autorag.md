@@ -9,7 +9,7 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-188](https://redhat.atlassian.net/browse/RHAISTRAT-188) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) |
-| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-mlflow-integration.md) |
+| Other docs:    | [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-mlflow-integration.md) · [ODH-ADR-0007](./ODH-ADR-0007-custom-rag-templates.md) |
 
 ## What
 
@@ -64,7 +64,7 @@ AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **doc
 | **MLflow** | Optional experiment tracking, metrics, and tracing when enabled at the project level |
 | **RHOAI Connections** | Secure, namespace-scoped credentials for data sources and platform endpoints |
 
-Operational detail for each layer (parameter names, search-space dimensions, metric backends, MaaS / vector Connections, MLflow) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0006).
+Operational detail for each layer (parameter names, search-space dimensions, metric backends, MaaS / vector Connections, MLflow, and custom-template execution) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0007).
 
 ### Lifecycle Phases
 

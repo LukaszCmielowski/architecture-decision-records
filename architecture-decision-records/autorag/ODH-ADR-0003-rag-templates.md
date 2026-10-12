@@ -92,4 +92,5 @@ Serving behavior is defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inferen
 - [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md)
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
+- [Custom RAG templates](./ODH-ADR-0007-custom-rag-templates.md)
 - [Neo4j GraphRAG user guide](https://neo4j.com/docs/neo4j-graphrag-python/current/user_guide_rag.html)
