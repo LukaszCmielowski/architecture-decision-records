@@ -13,7 +13,7 @@
 
 ## What
 
-Add direct support for one OpenAI-compatible embedding model and one generation model, including standalone vLLM deployments, through `embedding_secret_name: str` and `generation_secret_name: str`.
+Add direct support for one OpenAI-compatible embedding model and one generation model, including standalone vLLM deployments, through `embedding_model_secret_name: str` and `generation_model_secret_name: str`.
 
 ## Why
 
@@ -34,8 +34,8 @@ The pipeline parameter surface is defined in [ODH-ADR-0002](./ODH-ADR-0002-exper
 Example direct-endpoint inputs:
 
 ```yaml
-embedding_secret_name: embedding-model-connection
-generation_secret_name: vllm-chat-connection
+embedding_model_secret_name: embedding-model-connection
+generation_model_secret_name: vllm-chat-connection
 ```
 
 ### OpenAI-compatible model Secrets

@@ -69,8 +69,8 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `db_secret_name` | `str` | (required) | Database Connection selected by the active template: `MILVUS_*` or `PGVECTOR_*` for simple RAG, `NEO4J_*` for Graph RAG ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). |
 | `embedding_models` | `list[str]` | `[]` | Ordered MaaS embedding model IDs; requires `maas_secret_name`. |
 | `generation_models` | `list[str]` | `[]` | Ordered MaaS generation model IDs; requires `maas_secret_name`. |
-| `embedding_secret_name` | `str` | `""` | Secret identifying one OpenAI-compatible embedding model. |
-| `generation_secret_name` | `str` | `""` | Secret identifying one OpenAI-compatible generation model. |
+| `embedding_model_secret_name` | `str` | `""` | Secret identifying one OpenAI-compatible embedding model. |
+| `generation_model_secret_name` | `str` | `""` | Secret identifying one OpenAI-compatible generation model. |
 | `search_space_config` | `dict` | `{}` | Chunking, retrieval, and generation overrides; see [Search-space configuration](#search-space-configuration). |
 | `optimization_metric` | `str` | `custom:overall_score` | Evaluator-qualified GAM objective ID (for example, `unitxt:faithfulness` or `ragas:context_precision`). Valid IDs depend on the preset: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). |
 | `optimization_max_rag_patterns` | `int` | `5` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
