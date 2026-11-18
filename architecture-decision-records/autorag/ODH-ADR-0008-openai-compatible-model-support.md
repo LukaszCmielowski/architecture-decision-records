@@ -13,11 +13,11 @@
 
 ## What
 
-Add direct support for OpenAI-compatible embedding and generation models, including standalone vLLM deployments, through `embedding_secret_names: list` and `generation_secret_names: list`. Preserve selected model bindings across optimization, evaluation, indexing, and inference.
+Add direct support for OpenAI-compatible embedding and generation models, including standalone vLLM deployments, through `embedding_secret_names: list` and `generation_secret_names: list`.
 
 ## Why
 
-Users need to consume independently hosted models without requiring MaaS installation, registration, or routing. Explicit Secret lists provide reusable model bindings and keep credentials outside pipeline parameters.
+Users need to consume independently hosted models without requiring MaaS installation, registration, or routing.
 
 ## Non-Goals
 
@@ -27,9 +27,7 @@ Model provisioning, subscription or credential management, changes to other expe
 
 ### Pipeline inputs
 
-The pipeline parameter surface is defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#pipeline-parameters). This ADR defines resolution of `embedding_secret_names` and `generation_secret_names` into OpenAI-compatible model bindings.
-
-Each Secret list must be non-empty and reference resources in the run's namespace. Preserve list order when resolving embedding and generation candidates.
+The pipeline parameter surface is defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#pipeline-parameters). Each list must be non-empty, reference Secrets in the run's namespace, and preserve candidate order. Models must support the requested operation.
 
 Example direct-endpoint inputs:
 
@@ -64,45 +62,34 @@ stringData:
   OPENAI_API_KEY: <endpoint-token>
 ```
 
-A shared OpenAI-compatible endpoint has one Secret per selected model. This duplicates connection values but keeps each list entry self-contained. The same Secret may appear in both role lists if the model supports both operations.
-
-### Binding requirements
-
-Each run requires valid embedding and generation bindings supporting the requested operations. Record model IDs, endpoints, and Secret references as run provenance; credential values remain in Secrets and authorized runtime components. The run's identity must have access limited to the referenced Secrets. Secret delivery and validation mechanics belong to the implementation.
-
 ### Evaluation and winning patterns
 
 Use selected bindings for all model calls. Preserve [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)'s first-generation-model and first-embedding-model evaluator selection, fixed across trials.
 
-Winning patterns record selected model IDs, binding type (`maas` or `openai`), endpoints, and Secret names. Extend [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) so indexing, generated notebooks, starter kits, Dashboard tests, and deployed inference consume them. Index reuse accounts for embedding bindings and indexing settings. Existing patterns retain their MaaS interpretation.
+Runs and winning patterns record selected model IDs, binding type (`maas` or `openai`), endpoints, and Secret names. Consumers defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)—indexing, notebooks, starter kits, Dashboard tests, and deployed inference—preserve these bindings. Index reuse accounts for embedding bindings and indexing settings. Existing patterns retain their MaaS interpretation.
 
-Map Secrets to authorized Connections when deploying into another namespace. Compare resolved model IDs and endpoints with the snapshot; changes require rebinding and revalidation. Changed embedding behavior requires reindexing. Credential rotation preserves model identity; model weights follow the endpoint's lifecycle.
+Map Secrets to authorized Connections when deploying into another namespace. Model-ID or endpoint changes require rebinding and revalidation; changed embedding behavior requires reindexing. Credential rotation preserves model identity.
 
 ## Alternatives
 
 | Option | Advantages | Drawbacks |
 | ------ | ---------- | --------- |
 | Model Secret lists (selected) | Reusable, explicit bindings; no extra configuration resource. | Requires a defined Secret format and scoped runtime Secret reads. |
-| ConfigMap containing model bindings | Named, reusable configuration; GitOps support; flexible endpoint and credential references. | Adds lookup RBAC, schema compatibility, ownership, and cleanup. Dashboard creation per run/edit can accumulate ConfigMaps; shared edits affect later runs. |
+| ConfigMap containing model bindings | Named, reusable configuration; GitOps support; flexible endpoint and credential references. | Adds lookup RBAC, schema compatibility, ownership, snapshots, retention, and cleanup. Dashboard creation per run/edit can accumulate ConfigMaps; shared edits affect later runs. |
 | Dictionary of model IDs, URLs, and Secret name/key references | Flexible per-model bindings; reuses arbitrary credential formats and shared endpoint credentials; recorded with the run. | More fields and validation than self-contained Secrets; reuse needs saved configuration. |
-| Custom AI Asset endpoints | Reuses Dashboard registration, discovery, and credential references. | Depends on AI Assets schema and resource lifecycle; needs adaptation into pipeline bindings. |
+| [Custom AI Asset endpoints](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml) | Reuses Dashboard registration, discovery, and credential references. | Depends on AI Assets schema and resource lifecycle; Secret name/key mappings need adaptation into pipeline bindings. |
 | One embedding and one generation Secret | Simple fixed pair; supports KFP Secret environment injection. | Limits independently authenticated candidates to one per role. |
 | Require every model behind one MaaS Connection | One shared connection without duplicated credential values. | Requires direct and independently authenticated endpoints to be exposed through MaaS first. |
 
-ConfigMap delivery would require a snapshot and a retention policy covering failed submissions and deleted runs. Kubernetes validates the ConfigMap envelope; AutoRAG validates model bindings. Saved inputs and reruns need compatibility or migration when binding schemas change.
-
-For custom AI Assets, Dashboard resolves selected models under the submitting user's permissions from `gen-ai-aa-custom-model-endpoints` / `config.yaml`. Its bindings carry model ID, base URL, and Secret name/key (`api_key` for Dashboard-created entries). Integration must map them to the selected Secret contract or extend the pipeline binding schema, preserving asset identity in the run snapshot. See the [implementation](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/token_k8s_client.go) and [example configuration](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml).
-
 ## Security and Privacy Considerations
 
-Authorize Secret references for the submitting user and the run's ServiceAccount independently of the Dashboard session. The referenced-name allow-list must be enforced before execution. Keep credential values out of parameters, snapshots, logs, and errors; reject credentials embedded in URLs. Protect recorded model bindings with project access controls and apply platform egress policies.
+Authorize the submitting user and run identity for only the referenced Secrets, independently of the Dashboard session. Keep credential values in Secrets and authorized runtime components, excluding parameters, snapshots, logs, and errors. Reject credentials embedded in URLs. Protect recorded bindings with project access controls and apply platform egress policies.
 
 ## Risks
 
-* OpenAI-compatible Secret-per-model bindings duplicate credentials for shared endpoints; rotation must update each affected Secret. MaaS uses its shared Connection.
+* One Secret per model duplicates shared-endpoint credentials; rotation must update each affected Secret.
 * Endpoint capabilities, availability, and model weights can change during a run.
-* Runtime-length Secret resolution and the run ServiceAccount's scoped access require integration validation on the target RHOAI pipeline backend.
-* Release the new inputs only when candidate-list resolution and downstream pattern consumers preserve the selected bindings.
+* Runtime Secret access requires integration validation on the target RHOAI pipeline backend.
 
 ## References
 
