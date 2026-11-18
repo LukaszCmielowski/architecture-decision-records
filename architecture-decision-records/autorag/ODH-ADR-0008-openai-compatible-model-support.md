@@ -13,7 +13,7 @@
 
 ## What
 
-Add direct support for OpenAI-compatible embedding and generation models, including standalone vLLM deployments, through `embedding_secret_names: list` and `generation_secret_names: list`.
+Add direct support for one OpenAI-compatible embedding model and one generation model, including standalone vLLM deployments, through `embedding_secret_name: str` and `generation_secret_name: str`.
 
 ## Why
 
@@ -27,20 +27,20 @@ Model provisioning, subscription or credential management, changes to other expe
 
 ### Pipeline inputs
 
-The pipeline parameter surface is defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#pipeline-parameters). When using the direct OpenAI-compatible inputs, both Secret lists must be non-empty. Entries reference Secrets in the run's namespace and preserve candidate order. Models must support the requested operation.
+The pipeline parameter surface is defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#pipeline-parameters). Direct OpenAI-compatible access requires both Secret names, referencing resources in the run's namespace. Each Secret identifies one model supporting its assigned operation, fixed throughout the run.
+
+**Use MaaS for multiple embedding or generation model candidates in one experiment's search space**, through `maas_secret_name`, `embedding_models`, and `generation_models`.
 
 Example direct-endpoint inputs:
 
 ```yaml
-embedding_secret_names:
-  - embedding-model-connection
-generation_secret_names:
-  - vllm-chat-connection
+embedding_secret_name: embedding-model-connection
+generation_secret_name: vllm-chat-connection
 ```
 
 ### OpenAI-compatible model Secrets
 
-Each Secret in `embedding_secret_names` or `generation_secret_names` supplies one OpenAI-compatible model binding:
+Each referenced Secret supplies one OpenAI-compatible model binding:
 
 | Key | Requirement |
 | --- | ----------- |
@@ -64,11 +64,11 @@ stringData:
 
 ### Evaluation and winning patterns
 
-Use selected bindings for all model calls. Preserve [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)'s first-generation-model and first-embedding-model evaluator selection, fixed across trials.
+Use the selected bindings for all model calls, including evaluation, fixed across trials ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)).
 
 Runs and winning patterns record selected model IDs, binding type (`maas` or `openai`), endpoints, and Secret names. Consumers defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)—indexing, notebooks, starter kits, Dashboard tests, and deployed inference—preserve these bindings. Index reuse accounts for embedding bindings and indexing settings. Existing patterns retain their MaaS interpretation.
 
-Model identity includes the endpoint binding: the same model ID at different endpoints represents distinct candidates throughout optimization and artifact consumption.
+Model identity includes the endpoint binding; model ID alone is insufficient for artifact consumption and index reuse.
 
 Changing the embedding model or its behavior requires reindexing.
 
@@ -76,11 +76,11 @@ Changing the embedding model or its behavior requires reindexing.
 
 | Option | Advantages | Drawbacks |
 | ------ | ---------- | --------- |
-| Model Secret lists (selected) | Reusable, explicit bindings; no extra configuration resource. | Requires a defined Secret format and scoped runtime Secret reads. |
+| One embedding and one generation Secret (selected) | Fixed, explicit bindings; supports KFP Secret injection; no extra configuration resource. | One model per role; multi-model search uses MaaS. |
 | ConfigMap containing model bindings | Named, reusable configuration; GitOps support; flexible endpoint and credential references. | Adds lookup RBAC, schema compatibility, ownership, snapshots, retention, and cleanup. Dashboard creation per run/edit can accumulate ConfigMaps; shared edits affect later runs. |
 | Dictionary of model IDs, URLs, and Secret name/key references | Flexible per-model bindings; reuses arbitrary credential formats and shared endpoint credentials; recorded with the run. | More fields and validation than self-contained Secrets; reuse needs saved configuration. |
 | [Custom AI Asset endpoints](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml) | Reuses Dashboard registration, discovery, and credential references. | Tech Preview with an unclear GA path. Depends on AI Assets schema and resource lifecycle; Secret name/key mappings need adaptation into pipeline bindings. |
-| One embedding and one generation Secret | Simple fixed pair; supports KFP Secret environment injection. | Limits independently authenticated candidates to one per role. |
+| Model Secret lists | Supports multiple independently authenticated models per role. | More selection, validation, and credential-injection complexity than a fixed pair. |
 | Require every model behind one MaaS Connection | One shared connection without duplicated credential values. | Requires direct and independently authenticated endpoints to be exposed through MaaS first. |
 
 ## Security and Privacy Considerations
@@ -89,14 +89,13 @@ Authorize the submitting user and run identity for only the referenced Secrets, 
 
 ## Risks
 
-* One Secret per model duplicates shared-endpoint credentials; rotation must update each affected Secret.
+* Separate model Secrets can duplicate shared-endpoint credentials; rotation must update each affected Secret.
 * Endpoint capabilities, availability, and model weights can change during a run.
-* Runtime Secret access requires integration validation on the target RHOAI pipeline backend.
+* Secret injection and run authorization require integration validation on the target RHOAI pipeline backend.
 
 ## References
 
 * [AutoRAG RAG templates](./ODH-ADR-0003-rag-templates.md)
 * [RHOAI Connections API](../operator/ODH-ADR-Operator-0009-connection-api.md)
-* [KFP list input parameters](https://www.kubeflow.org/docs/components/pipelines/user-guides/data-handling/parameters/)
 * [KFP Kubernetes Secret injection](https://kfp-kubernetes.readthedocs.io/en/kfp-kubernetes-2.17/_modules/kfp/kubernetes/secret.html)
 * [Kubernetes RBAC resource names](https://kubernetes.io/docs/reference/access-authn-authz/rbac/#referring-to-resources)

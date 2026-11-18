@@ -69,14 +69,14 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `db_secret_name` | `str` | (required) | Database Connection selected by the active template: `MILVUS_*` or `PGVECTOR_*` for simple RAG, `NEO4J_*` for Graph RAG ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). |
 | `embedding_models` | `list[str]` | `[]` | Ordered MaaS embedding model IDs; requires `maas_secret_name`. |
 | `generation_models` | `list[str]` | `[]` | Ordered MaaS generation model IDs; requires `maas_secret_name`. |
-| `embedding_secret_names` | `list[str]` | `[]` | Ordered OpenAI-compatible embedding model Secrets. |
-| `generation_secret_names` | `list[str]` | `[]` | Ordered OpenAI-compatible generation model Secrets. |
+| `embedding_secret_name` | `str` | `""` | Secret identifying one OpenAI-compatible embedding model. |
+| `generation_secret_name` | `str` | `""` | Secret identifying one OpenAI-compatible generation model. |
 | `search_space_config` | `dict` | `{}` | Chunking, retrieval, and generation overrides; see [Search-space configuration](#search-space-configuration). |
 | `optimization_metric` | `str` | `custom:overall_score` | Evaluator-qualified GAM objective ID (for example, `unitxt:faithfulness` or `ragas:context_precision`). Valid IDs depend on the preset: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). |
 | `optimization_max_rag_patterns` | `int` | `5` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
 
-Model binding contracts follow [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md). Runs require embedding and generation candidates.
+Model binding contracts follow [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md). Direct OpenAI-compatible access requires both Secret names and fixes one model per role. For multiple model candidates within one experiment, use MaaS with `embedding_models` and `generation_models`.
 
 `db_secret_name` is required. Its keys must match the selected template: simple RAG uses a vector backend; Graph RAG uses Neo4j, which provides graph, vector, and full-text storage.
 
@@ -170,7 +170,7 @@ Row-level evaluation output (`evaluation_results.json`) does **not** repeat `cor
 
 Secrets are Kubernetes Secret **names** (RHOAI Connections). Values are injected or resolved by authorized consuming components; they are not pipeline-parameter payloads.
 
-HPO uses selected **MaaS or OpenAI-compatible bindings** for embeddings, chat, and Ragas evaluation, and **LangChain adapters** for vector upsert and search. MaaS candidates are selected by model ID; direct candidates come from the model Secret lists. [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md) defines both contracts. Production consumers preserve the winning bindings ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation)).
+HPO uses selected **MaaS or OpenAI-compatible bindings** for embeddings, chat, and Ragas evaluation, and **LangChain adapters** for vector upsert and search. MaaS candidates are selected by model ID; direct models come from the embedding and generation Secrets. [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md) defines both contracts. Production consumers preserve the winning bindings ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation)).
 
 | Capability | Provider | Notes |
 |------------|----------|-------|

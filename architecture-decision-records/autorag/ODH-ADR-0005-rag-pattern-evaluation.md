@@ -92,6 +92,7 @@ Ragas uses the selected evaluator models' MaaS or OpenAI-compatible bindings, in
 
 * Evaluating LLM: first search-space generation model, fixed across trials.
 * Embeddings (`answer_relevancy`): first search-space embedding model, fixed across trials.
+* For direct OpenAI-compatible access, these are the single models selected by `generation_secret_name` and `embedding_secret_name`.
 * `model_id` on Ragas `metrics[]` entries records those models when emitted.
 * Ragas costs apply only to `balanced` and scale with benchmark rows × patterns × four Ragas metrics (plus embedding calls for `answer_relevancy`).
 * Failed or slow samples yield a `null` score; they do not fail the whole pattern.
