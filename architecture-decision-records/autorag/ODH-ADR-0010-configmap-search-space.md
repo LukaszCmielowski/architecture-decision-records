@@ -13,11 +13,13 @@
 
 ## What
 
-Accept model candidates through `embedding_secret_names: list` and `generation_secret_names: list`, and search-space overrides through `search_space_config: dict`. Each Secret identifies one OpenAI-compatible model, including models served directly by vLLM or through Models as a Service (MaaS). Selected bindings carry through optimization, evaluation, indexing, and inference.
+Support Models as a Service (MaaS) through `maas_secret_name` and model-ID lists, and additional OpenAI-compatible models through `embedding_secret_names: list` and `generation_secret_names: list`. Accept search-space overrides through `search_space_config: dict`. A run can compare candidates from both sources; selected bindings carry through optimization, evaluation, indexing, and inference.
 
 ## Why
 
 Users need independently authenticated models and corpus-specific settings beyond the presets in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md). Explicit Secret lists keep model connections reusable and credentials outside pipeline parameters; a dictionary groups advanced settings without another Kubernetes resource.
+
+AutoRAG must support OpenAI-compatible embedding and generation endpoints directly, including standalone vLLM deployments, without requiring MaaS installation, registration, or routing. A run using only these endpoints requires neither `maas_secret_name` nor MaaS model-ID inputs.
 
 ## Non-Goals
 
@@ -27,26 +29,33 @@ Model provisioning, subscription or credential management, changes to other expe
 
 ### Pipeline inputs
 
-Add these parameters to `documents_rag_optimization_pipeline`:
+Extend `documents_rag_optimization_pipeline` with Secret lists and search settings, retaining the MaaS inputs:
 
 | Parameter | Type | Default | Meaning |
 | --------- | ---- | ------- | ------- |
-| `embedding_secret_names` | `list` | `[]` | Ordered Secret names for embedding candidates. |
-| `generation_secret_names` | `list` | `[]` | Ordered Secret names for generation candidates. |
+| `maas_secret_name` | `str` | `""` | MaaS Connection shared by the selected MaaS models. |
+| `embedding_models` | `list` | `[]` | Ordered embedding model IDs from that MaaS Connection. |
+| `generation_models` | `list` | `[]` | Ordered generation model IDs from that MaaS Connection. |
+| `embedding_secret_names` | `list` | `[]` | Ordered Secret names for additional OpenAI-compatible embedding candidates. |
+| `generation_secret_names` | `list` | `[]` | Ordered Secret names for additional OpenAI-compatible generation candidates. |
 | `search_space_config` | `dict` | `{}` | Chunking, retrieval, and generation search-space overrides. |
 
-List elements are non-empty strings referencing Secrets in the run's namespace. When either model list is supplied, both must be non-empty and the legacy `maas_secret_name`, `embedding_models`, and `generation_models` inputs must be empty. Make those legacy inputs optional; when both new lists are empty, preserve their existing validation and behavior.
+Secret names reference resources in the run's namespace. MaaS model IDs require `maas_secret_name`; a supplied MaaS Connection requires at least one selected MaaS model. Each role's candidates are its MaaS model IDs followed by its explicit Secret bindings, preserving list order. Require at least one embedding and one generation candidate across the combined sources. MaaS-only, OpenAI-compatible-only, and mixed runs are supported.
 
-An empty dictionary uses preset defaults. Otherwise, supplied candidate lists replace the corresponding defaults; omitted dimensions inherit them. The `preset` continues to control extraction and runtime defaults. Search-space overrides apply to either model-input mode.
+An empty dictionary uses preset defaults. Otherwise, supplied candidate lists replace the corresponding defaults; omitted dimensions inherit them. The `preset` continues to control extraction and runtime defaults. Search-space overrides apply to all model sources.
 
 Example pipeline inputs:
 
 ```yaml
+maas_secret_name: maas-connection
+embedding_models:
+  - maas-embedding-model
+generation_models:
+  - maas-chat-model
 embedding_secret_names:
   - embedding-model-connection
 generation_secret_names:
   - vllm-chat-connection
-  - maas-chat-connection
 search_space_config:
   apiVersion: autorag.opendatahub.io/v1alpha1
   kind: AutoRAGSearchSpace
@@ -65,9 +74,11 @@ search_space_config:
 
 KFP carries the dictionary as a `STRUCT` parameter. AutoRAG validates its schema, with model selection supplied exclusively by the model inputs. Search dimensions use finite, non-empty candidate lists; one value fixes a setting. Generation parameters apply to all generation candidates. Chunking and retrieval fields follow [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md).
 
-### Model Secret contract
+### MaaS and OpenAI-compatible Secret contracts
 
-Each Secret supplies one binding:
+The MaaS Connection uses `MAAS_BASE_URL` and `MAAS_API_KEY`; `embedding_models` and `generation_models` select its model IDs. Normalize the API base while preserving the gateway path and ensuring a single `/v1` suffix.
+
+Each Secret in `embedding_secret_names` or `generation_secret_names` supplies one OpenAI-compatible model binding:
 
 | Key | Requirement |
 | --- | ----------- |
@@ -89,13 +100,13 @@ stringData:
   OPENAI_API_KEY: <endpoint-token>
 ```
 
-MaaS models use the same keys with their gateway URL and authorized API key. A gateway serving multiple models has one Secret per selected model. This duplicates connection values but keeps each pipeline list entry self-contained. The same Secret may appear in both role lists if the model supports both operations. Legacy MaaS inputs retain their existing `MAAS_*` format.
+A shared OpenAI-compatible endpoint has one Secret per selected model. This duplicates connection values but keeps each list entry self-contained. The same Secret may appear in both role lists if the model supports both operations. MaaS models share their MaaS Connection.
 
 ### Resolution and validation
 
 Before extraction or pre-selection, resolve the named Secrets, apply search defaults, and validate:
 
-* Non-empty model lists in the selected mode, unique names within each role, and required Secret keys.
+* At least one candidate per role across both sources, unique bindings within each role, and required Secret keys.
 * Search schema, template/backend constraints, model limits, overlap smaller than chunk size, and generation settings supported by every candidate.
 * Each model's embedding or generation operation, endpoint reachability, search-space bounds, and trial budgets. Report errors by field path and show the effective search-space size.
 
@@ -107,7 +118,7 @@ Persist effective settings, ordered model IDs, normalized endpoints, Secret name
 
 Use selected bindings for all model calls. Preserve [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)'s first-generation-model and first-embedding-model evaluator selection, fixed across trials.
 
-Winning patterns record selected model IDs, endpoints, Secret names, and effective settings. Extend [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) so indexing, generated notebooks, starter kits, Dashboard tests, and deployed inference consume them. Index reuse accounts for embedding bindings and indexing settings. Legacy patterns retain their MaaS interpretation.
+Winning patterns record selected model IDs, binding type (`maas` or `openai`), endpoints, Secret names, and effective settings. Extend [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) so indexing, generated notebooks, starter kits, Dashboard tests, and deployed inference consume them. Index reuse accounts for embedding bindings and indexing settings. Existing patterns retain their MaaS interpretation.
 
 Map Secrets to authorized Connections when deploying into another namespace. Compare resolved model IDs and endpoints with the snapshot; changes require rebinding and revalidation. Changed embedding behavior requires reindexing. Credential rotation preserves model identity; model weights follow the endpoint's lifecycle.
 
@@ -117,7 +128,7 @@ Map Secrets to authorized Connections when deploying into another namespace. Com
 
 | Option | Advantages | Drawbacks |
 | ------ | ---------- | --------- |
-| Secret lists plus `search_space_config: dict` (selected) | Explicit model bindings; one structured settings input recorded with the run; no extra configuration resource. | Requires the model Secret format, scoped runtime Secret reads, and object validation. |
+| MaaS inputs and OpenAI-compatible Secret lists plus `search_space_config: dict` (selected) | Supports MaaS and direct endpoints together; one structured settings input; no extra configuration resource. | Requires both Secret contracts, scoped runtime Secret reads, and object validation. |
 | Search-space ConfigMap reference | Named, reusable configuration; GitOps support; small pipeline signature. | Adds lookup RBAC, ownership, maintenance, and cleanup. Dashboard creation per run/edit can accumulate ConfigMaps; shared edits affect later runs. |
 | One `advanced_config: dict` containing models and settings | Flexible per-model endpoint, provider, and Secret mappings in one object. | Larger schema and Dashboard form; combines connection definitions with search settings. |
 | Separate parameters, e.g. `chunk_sizes`, `temperatures` | Individual types and defaults; simple forms for a few settings. | Each dimension extends the pipeline signature; nested settings are awkward. |
@@ -132,7 +143,7 @@ YAML/JSON text is an encoding variant of a dictionary input and requires decodin
 | ------ | ---------- | --------- |
 | Custom AI Asset endpoints | Reuses Dashboard registration, discovery, and credential references. | Depends on AI Assets schema and resource lifecycle; needs adaptation into pipeline bindings. |
 | One embedding and one generation Secret | Simple fixed pair; supports KFP Secret environment injection. | Limits independently authenticated candidates to one per role. A compilation probe for this pair does not validate arbitrary Secret lists. |
-| One MaaS Connection plus model IDs | Reuses current routing and credentials without duplicating connection values. | Excludes direct vLLM and independently authenticated endpoints. |
+| Require every model behind one MaaS Connection | One shared connection without duplicated credential values. | Requires direct and independently authenticated endpoints to be exposed through MaaS first. |
 | Model entries with explicit URL and Secret name/key | Reuses arbitrary credential formats and shared gateway credentials. | More per-model fields and validation than a self-contained Secret. |
 
 For custom AI Assets, Dashboard resolves selected models under the submitting user's permissions from `gen-ai-aa-custom-model-endpoints` / `config.yaml`. Its bindings carry model ID, base URL, and Secret name/key (`api_key` for Dashboard-created entries). Integration must map them to the selected Secret contract or extend the pipeline binding schema, preserving asset identity in the run snapshot. See the [implementation](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/token_k8s_client.go) and [example configuration](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml).
@@ -143,7 +154,7 @@ Authorize Secret references for the submitting user and the run's ServiceAccount
 
 ## Risks
 
-* Secret-per-model bindings duplicate credentials for models sharing a gateway; rotation must update each affected Secret.
+* OpenAI-compatible Secret-per-model bindings duplicate credentials for shared endpoints; rotation must update each affected Secret. MaaS uses its shared Connection.
 * Endpoint capabilities, availability, and model weights can change during a run.
 * Release the new inputs only when candidate-list resolution and downstream pattern consumers preserve the selected bindings.
 
