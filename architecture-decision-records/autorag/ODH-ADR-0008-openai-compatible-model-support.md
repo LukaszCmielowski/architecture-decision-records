@@ -1,4 +1,4 @@
-# Open Data Hub - AutoRAG Model Selection and Search-Space Configuration
+# Open Data Hub - AutoRAG OpenAI-Compatible Model Support
 
 |                |            |
 | -------------- | ---------- |
@@ -29,22 +29,11 @@ Model provisioning, subscription or credential management, changes to other expe
 
 ### Pipeline inputs
 
-Extend `documents_rag_optimization_pipeline` with Secret lists and search settings, retaining the MaaS inputs:
-
-| Parameter | Type | Default | Meaning |
-| --------- | ---- | ------- | ------- |
-| `maas_secret_name` | `str` | `""` | MaaS Connection shared by the selected MaaS models. |
-| `embedding_models` | `list` | `[]` | Ordered embedding model IDs from that MaaS Connection. |
-| `generation_models` | `list` | `[]` | Ordered generation model IDs from that MaaS Connection. |
-| `embedding_secret_names` | `list` | `[]` | Ordered Secret names for additional OpenAI-compatible embedding candidates. |
-| `generation_secret_names` | `list` | `[]` | Ordered Secret names for additional OpenAI-compatible generation candidates. |
-| `search_space_config` | `dict` | `{}` | Chunking, retrieval, and generation search-space overrides. |
+The parameter surface is defined in [ODH-ADR-0002 — Pipeline parameters](./ODH-ADR-0002-experiment-settings.md#pipeline-parameters). This ADR defines how `maas_secret_name` with model-ID lists and `embedding_secret_names` / `generation_secret_names` resolve into model bindings. The `search_space_config` schema, defaults, precedence, and validation are owned by [ODH-ADR-0002 — Search-space configuration](./ODH-ADR-0002-experiment-settings.md#search-space-configuration).
 
 Secret names reference resources in the run's namespace. MaaS model IDs require `maas_secret_name`; a supplied MaaS Connection requires at least one selected MaaS model. Each role's candidates are its MaaS model IDs followed by its explicit Secret bindings, preserving list order. Require at least one embedding and one generation candidate across the combined sources. MaaS-only, OpenAI-compatible-only, and mixed runs are supported.
 
-An empty dictionary uses preset defaults. Otherwise, supplied candidate lists replace the corresponding defaults; omitted dimensions inherit them. The `preset` continues to control extraction and runtime defaults. Search-space overrides apply to all model sources.
-
-Example pipeline inputs:
+Example model inputs for a mixed run; combine these with `search_space_config` from ADR 2 as needed:
 
 ```yaml
 maas_secret_name: maas-connection
@@ -56,23 +45,7 @@ embedding_secret_names:
   - embedding-model-connection
 generation_secret_names:
   - vllm-chat-connection
-search_space_config:
-  apiVersion: autorag.opendatahub.io/v1alpha1
-  kind: AutoRAGSearchSpace
-  chunking:
-    method: [recursive]
-    chunk_size: [256, 512, 1024]
-    chunk_overlap: [0, 64]
-  retrieval:
-    search_mode: [vector, hybrid]
-    number_of_chunks: [3, 5, 10]
-  generation:
-    parameters:
-      temperature: [0.0, 0.2]
-      max_completion_tokens: [512, 1024]
 ```
-
-KFP carries the dictionary as a `STRUCT` parameter. AutoRAG validates its schema, with model selection supplied exclusively by the model inputs. Search dimensions use finite, non-empty candidate lists; one value fixes a setting. Generation parameters apply to all generation candidates. Chunking and retrieval fields follow [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md).
 
 ### MaaS and OpenAI-compatible Secret contracts
 
@@ -104,15 +77,14 @@ A shared OpenAI-compatible endpoint has one Secret per selected model. This dupl
 
 ### Resolution and validation
 
-Before extraction or pre-selection, resolve the named Secrets, apply search defaults, and validate:
+Before extraction or pre-selection, resolve model bindings and apply ADR 2's search-space validation. Check:
 
 * At least one candidate per role across both sources, unique bindings within each role, and required Secret keys.
-* Search schema, template/backend constraints, model limits, overlap smaller than chunk size, and generation settings supported by every candidate.
-* Each model's embedding or generation operation, endpoint reachability, search-space bounds, and trial budgets. Report errors by field path and show the effective search-space size.
+* Each model's limits, embedding or generation operation, and endpoint reachability.
 
 Model-consuming components read the named Secrets using the run's ServiceAccount, with namespace-local `get` access restricted to the referenced names. Credential values stay inside consuming components. This supports runtime-length candidate lists without compiling a fixed number of Secret environment bindings; verify the access and resolution path on the target RHOAI pipeline backend.
 
-Persist effective settings, ordered model IDs, normalized endpoints, Secret names, payload version, and a configuration digest with the preparation report and MLflow artifacts. Downstream steps use this snapshot and resolve credentials at runtime. Later endpoint failures retain existing trial failure semantics. Identify candidates by Secret name and model ID, including the resolved endpoint in client and cache identity.
+Add ordered model IDs, normalized endpoints, and Secret names to the run snapshot defined in ADR 2. Downstream steps use these bindings and resolve credentials at runtime. Later endpoint failures retain existing trial failure semantics. Identify candidates by Secret name and model ID, including the resolved endpoint in client and cache identity.
 
 ### Evaluation and winning patterns
 

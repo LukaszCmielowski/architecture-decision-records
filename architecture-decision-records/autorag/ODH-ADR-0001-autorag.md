@@ -32,7 +32,7 @@ AutoRAG automates this process, enabling users to:
 ## Goals
 
 * Provide automated optimization of document RAG applications within RHOAI
-* Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, MaaS for chat and embeddings, database services, MLflow)
+* Integrate with existing RHOAI infrastructure (Kubeflow Pipelines, MaaS and direct OpenAI-compatible model endpoints, database services, MLflow)
 * Support flexible search space definition through constraints and presets
 * Emit production-ready RAG patterns that separate **optimization**, **indexing**, and **inference** concerns
 * Enable evaluation using standardized, comparable metrics on user-provided benchmark data
@@ -59,12 +59,12 @@ AutoRAG is implemented as a Kubeflow Pipeline. The pipeline optimizes on a **doc
 | **Managed pipelines** | Optimization and indexing ship as catalog-managed pipelines composed from reusable **pipelines-components** |
 | **Optimization engine** | Search-space exploration, GAM-based configuration selection, pattern assembly, benchmark evaluation |
 | **Document extraction** | Structured extraction from source documents (Docling) |
-| **MaaS** | Chat completions, embeddings, model discovery, and Ragas evaluation via the MaaS Connection — see [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#connections) |
+| **Model access** | MaaS or direct OpenAI-compatible bindings for chat, embeddings, and Ragas evaluation; MaaS also provides catalog discovery. See [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md). |
 | **Database store** | Simple RAG uses a persistent vector index via LangChain adapters (Milvus / PGVector); Graph RAG uses Neo4j graph, vector, and full-text indexes. `db_secret_name` selects the backend. |
 | **MLflow** | Optional experiment tracking, metrics, and tracing when enabled at the project level |
 | **RHOAI Connections** | Secure, namespace-scoped credentials for data sources and platform endpoints |
 
-Operational detail for each layer (parameter names, search-space dimensions, metric backends, MaaS / vector Connections, MLflow, and custom-template execution) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0007).
+Operational detail for each layer (parameter names, search-space dimensions, metric backends, model / database Connections, MLflow, and custom-template execution) lives in sibling AutoRAG ADRs (ODH-ADR-0002 through ODH-ADR-0008).
 
 ### Lifecycle Phases
 
@@ -105,7 +105,7 @@ flowchart LR
 
 **Phase 2 — Index** — User selects a pattern and runs an indexing workflow against the **full document corpus**, populating the store referenced by that pattern.
 
-**Phase 3 — Infer** — Consumers retrieve from the pattern's `store_binding` (query embeddings via MaaS) and call MaaS chat completions assembled from `settings.generation` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
+**Phase 3 — Infer** — Consumers retrieve from the pattern's `store_binding` and generate answers using its selected MaaS or OpenAI-compatible embedding and generation bindings and `settings.generation` ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)).
 
 ### Pipeline Inputs (categories)
 
@@ -114,7 +114,7 @@ The pipeline surface is defined in [ODH-ADR-0002-experiment-settings](./ODH-ADR-
 | Category | Purpose |
 | -------- | ------- |
 | **Data references** | One to ten document locations (object keys or prefixes) in one Connection/bucket, plus benchmark data for evaluation ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#corpus-locations)) |
-| **Platform credentials** | MaaS Connection (chat and embeddings) and one generic database Connection (`db_secret_name`): vector DB for simple RAG or Neo4j for Graph RAG |
+| **Platform credentials** | MaaS and/or OpenAI-compatible model Secrets, plus one generic database Connection (`db_secret_name`): vector DB for simple RAG or Neo4j for Graph RAG |
 | **Optimization controls** | Pattern budget, objective metric, quality preset |
 | **Search-space constraints** | Optional allow-lists and bounds on chunking, embedding, retrieval, and generation dimensions |
 
@@ -186,7 +186,7 @@ Specific parameter names, presets, retrieval modes, and metric backends are deta
 
 * **Data Access**: AutoRAG uses RHOAI Connections (Kubernetes Secrets) for secure access to data sources; credential names — not secret values — appear in pipeline parameters
 * **Namespace Isolation**: Connections are namespace-scoped, preventing cross-namespace data access
-* **Platform and database access**: MaaS credentials (`maas_secret_name`) for chat and embeddings; `db_secret_name` selects the vector database for simple RAG or Neo4j for Graph RAG. All are Connections/secrets.
+* **Platform and database access**: MaaS credentials (`maas_secret_name`) and/or OpenAI-compatible model Secrets ([ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md)) for chat and embeddings; `db_secret_name` selects the vector database for simple RAG or Neo4j for Graph RAG. All are Connections/secrets.
 * **Connection authorization**: Submission and deployment use Connections only through the authorization controls of the owning platform.
 * **Artifact Storage**: Results are stored in user-configured pipeline artifact locations with appropriate access controls
 * **Data Privacy**: Documents and test data are processed within the pipeline execution environment; retention follows configured storage policies
@@ -202,6 +202,7 @@ Specific parameter names, presets, retrieval modes, and metric backends are deta
   * [ODH-ADR-0004 — Pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
   * [ODH-ADR-0005 — Pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
   * [ODH-ADR-0006 — MLflow integration](./ODH-ADR-0006-mlflow-integration.md)
+  * [ODH-ADR-0008 — OpenAI-compatible model support](./ODH-ADR-0008-openai-compatible-model-support.md)
 * [AutoRAG component index](../../documentation/components/autorag/README.md)
 
 ## Reviews

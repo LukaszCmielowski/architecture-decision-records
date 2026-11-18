@@ -9,15 +9,15 @@
 | Supersedes     | N/A |
 | Superseded by: | N/A |
 | Tickets        | [RHAISTRAT-1673](https://redhat.atlassian.net/browse/RHAISTRAT-1673) · [RHAISTRAT-2040](https://redhat.atlassian.net/browse/RHAISTRAT-2040) · [RHAISTRAT-2440](https://redhat.atlassian.net/browse/RHAISTRAT-2440) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
-| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) |
+| Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md) |
 
 ## What
 
-This ADR documents the AutoRAG documents RAG optimization pipeline public parameters, HPO-time MaaS and vector-store wiring, quality presets, and the chunking / retrieval search-space dimensions explored by ai4rag during GAM optimization.
+This ADR documents the AutoRAG documents RAG optimization pipeline public parameters, HPO-time model and vector-store wiring, quality presets, and the chunking, retrieval, and generation search-space configuration explored by ai4rag during GAM optimization.
 
 ## Why
 
-Pipeline operators and Dashboard integrations need a stable contract for how optimization runs are configured (data sources, MaaS, vector-DB, and graph-DB Connections, required model lists, presets) and which chunking and retrieval knobs form the searchable configuration space. Capturing this as an ADR keeps the contract versioned alongside the AutoRAG architecture.
+Pipeline operators and Dashboard integrations need a stable contract for how optimization runs are configured (data sources, MaaS or OpenAI-compatible model bindings, database Connections, model candidates, presets) and which chunking and retrieval knobs form the searchable configuration space. Capturing this as an ADR keeps the contract versioned alongside the AutoRAG architecture.
 
 ## Goals
 
@@ -25,7 +25,7 @@ Pipeline operators and Dashboard integrations need a stable contract for how opt
 * Document multi-location corpus ingest (`input_data_keys` as a list of up to 10 keys/prefixes) and benchmark document identity by object key
 * Document speed and balanced presets (Docling behavior, chunking envelope, inference concurrency)
 * Specify chunking methods (recursive, hybrid) and retrieval modes (vector, keyword, hybrid, graph) used in the search space
-* Specify HPO-time MaaS vs LangChain split (catalog discovery, embeddings, chat, Ragas vs vector-store upsert/search)
+* Specify HPO-time model access (MaaS or direct OpenAI-compatible endpoints) and LangChain vector-store upsert/search
 
 ## Non-Goals
 
@@ -35,13 +35,14 @@ Pipeline operators and Dashboard integrations need a stable contract for how opt
 
 ## How
 
-Pipeline parameters, presets, **Connections** (MaaS / vector DB / graph DB), and the **chunking / retrieval** search space for **`documents_rag_optimization_pipeline`** ([opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)). ADR context: [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md). Production retrieve-and-generate: [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md).
+Pipeline parameters, presets, **Connections** (MaaS / OpenAI-compatible models / vector DB / graph DB), and the **chunking / retrieval** search space for **`documents_rag_optimization_pipeline`** ([opendatahub-io/pipelines-components](https://github.com/opendatahub-io/pipelines-components/tree/main/pipelines/training/autorag/documents_rag_optimization_pipeline)). ADR context: [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md). Production retrieve-and-generate: [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md).
 
-Search-space preparation runs **before** text extraction so unresponsive or misconfigured MaaS models fail the experiment before Docling work.
+Search-space preparation runs **before** text extraction so unresponsive or misconfigured model endpoints fail the experiment before Docling work.
 
 ## Table of contents
 
 - [Pipeline parameters](#pipeline-parameters)
+- [Search-space configuration](#search-space-configuration)
 - [Corpus locations](#corpus-locations)
 - [Benchmark JSON](#benchmark-json)
 - [Connections](#connections)
@@ -64,15 +65,48 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `input_data_secret_name` | `str` | (required) | Secret for document corpus access (same key convention) |
 | `input_data_bucket_name` | `str` | (required) | Bucket containing source documents |
 | `input_data_keys` | `list[str]` | (required; non-empty) | Object keys or prefixes for the document corpus (1–10). See [Corpus locations](#corpus-locations). |
-| `maas_secret_name` | `str` | (required) | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`). Used for model validation, embeddings, generation, and Ragas evaluation. |
+| `maas_secret_name` | `str` | `""` | MaaS Connection (`MAAS_BASE_URL`, `MAAS_API_KEY`); required when MaaS model IDs are supplied. |
 | `db_secret_name` | `str` | (required) | Database Connection selected by the active template: `MILVUS_*` or `PGVECTOR_*` for simple RAG, `NEO4J_*` for Graph RAG ([ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md)). |
-| `embedding_models` | `list[str]` | (required) | Non-empty list of embedding model ids for the search space. MaaS does not expose type metadata, so models cannot be inferred. |
-| `generation_models` | `list[str]` | (required) | Non-empty list of generation / foundation model ids for the search space. Same reason as `embedding_models`. |
+| `embedding_models` | `list[str]` | `[]` | Ordered MaaS embedding model IDs; requires `maas_secret_name`. |
+| `generation_models` | `list[str]` | `[]` | Ordered MaaS generation model IDs; requires `maas_secret_name`. |
+| `embedding_secret_names` | `list[str]` | `[]` | Ordered OpenAI-compatible embedding model Secrets. |
+| `generation_secret_names` | `list[str]` | `[]` | Ordered OpenAI-compatible generation model Secrets. |
+| `search_space_config` | `dict` | `{}` | Chunking, retrieval, and generation overrides; see [Search-space configuration](#search-space-configuration). |
 | `optimization_metric` | `str` | `custom:overall_score` | Evaluator-qualified GAM objective ID (for example, `unitxt:faithfulness` or `ragas:context_precision`). Valid IDs depend on the preset: [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric). |
 | `optimization_max_rag_patterns` | `int` | `5` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
 
+Model candidate resolution follows [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md): MaaS-only, direct OpenAI-compatible-only, and mixed runs are supported, with at least one candidate per role across both sources.
+
 `db_secret_name` is required. Its keys must match the selected template: simple RAG uses a vector backend; Graph RAG uses Neo4j, which provides graph, vector, and full-text storage.
+
+---
+
+## Search-space configuration
+
+`search_space_config: dict = {}` carries advanced settings as a KFP `STRUCT`. Model bindings remain separate ([ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md)). Non-empty configurations require the `apiVersion` and `kind` shown below.
+
+```yaml
+search_space_config:
+  apiVersion: autorag.opendatahub.io/v1alpha1
+  kind: AutoRAGSearchSpace
+  chunking:
+    method: [recursive]
+    chunk_size: [256, 512, 1024]
+    chunk_overlap: [0, 64]
+  retrieval:
+    search_mode: [vector, hybrid]
+    number_of_chunks: [3, 5, 10]
+  generation:
+    parameters:
+      temperature: [0.0, 0.2]
+      max_completion_tokens: [512, 1024]
+```
+
+* **Defaults:** `{}` uses preset defaults. Supplied dimensions replace their candidate lists; omitted dimensions inherit them. Extraction, enrichment, runtime defaults, and evaluator availability remain preset-controlled.
+* **Fields:** [Chunking](#chunking-methods) and [retrieval](#retrieval-methods) use their documented dimensions. `generation.parameters` supports `temperature` and `max_completion_tokens`, shared across all MaaS and direct-model candidates; per-model settings require separate runs.
+* **Validation:** Dimensions are finite, non-empty lists; one value fixes a setting. Before extraction or pre-selection, validate schema, types, bounds, template/backend and model compatibility, and overlap smaller than chunk size. Enforce search-space limits and trial budgets, report field-path errors, and show the effective search-space size.
+* **Snapshot:** Save effective settings, payload version, and digest with the preparation report and MLflow artifacts for downstream reuse. ADR 8 defines model provenance. Preserve compatibility or provide migration for saved inputs and reruns.
 
 ---
 
@@ -134,27 +168,27 @@ Row-level evaluation output (`evaluation_results.json`) does **not** repeat `cor
 
 ## Connections
 
-Secrets are Kubernetes Secret **names** (RHOAI Connections). Values are injected as environment variables; they are not pipeline-parameter payloads.
+Secrets are Kubernetes Secret **names** (RHOAI Connections). Values are injected or resolved by authorized consuming components; they are not pipeline-parameter payloads.
 
-HPO uses **MaaS** for model discovery, embeddings, chat completions, and Ragas evaluation, and **LangChain adapters** for vector upsert and search. AutoRAG does not use a component-specific model registry: the search space is the MaaS catalog constrained by the required `embedding_models` / `generation_models` lists. Production retrieve-and-generate uses the same MaaS Connection ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation)).
+HPO uses selected **MaaS or OpenAI-compatible bindings** for embeddings, chat, and Ragas evaluation, and **LangChain adapters** for vector upsert and search. MaaS candidates are selected by model ID; direct candidates come from the model Secret lists. [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md) defines both contracts. Production consumers preserve the winning bindings ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation)).
 
 | Capability | Provider | Notes |
 |------------|----------|-------|
-| LLM discovery | **MaaS** | List available chat models for the search space |
-| Chat completion | **MaaS** | Generation during trials |
-| Embeddings | **MaaS** | Embedding calls during trials |
-| Ragas evaluation | **MaaS** | LLM and embedding calls ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#ragas-runtime)) |
+| LLM discovery | **MaaS** | Catalog discovery for MaaS candidates; direct candidates are explicitly configured. |
+| Chat completion | MaaS or OpenAI-compatible binding | Generation during trials |
+| Embeddings | MaaS or OpenAI-compatible binding | Embedding calls during trials |
+| Ragas evaluation | Selected generation and embedding bindings | LLM and embedding calls ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#ragas-runtime)) |
 | Vector upsert / search | LangChain adapters | Milvus or PGVector for simple RAG, configured by `db_secret_name` |
 
 Trial-time path:
 
 ```text
 chunks
-  → embed (MaaS)
+  → embed (selected model binding)
   → vector DB upsert (LangChain adapter)
   → LangChain search (vector / keyword / hybrid) or Neo4j graph search
-  → MaaS chat completion
-  → evaluate metrics (Unitxt; Ragas LLM and embeddings via MaaS)
+  → chat completion (selected model binding)
+  → evaluate metrics (Unitxt; Ragas via selected model bindings)
 ```
 
 **MaaS** (`maas_secret_name`)
@@ -164,7 +198,7 @@ chunks
 | `MAAS_BASE_URL` | OpenAI-compatible MaaS gateway base URL |
 | `MAAS_API_KEY` | API key for discovery, embeddings, chat, and Ragas evaluation |
 
-Mounted on `search_space_preparation`, `models_pre_selector`, and `rag_templates_optimization`.
+Used by `search_space_preparation`, `models_pre_selector`, and `rag_templates_optimization` when MaaS candidates are selected. Direct model Secrets instead supply `OPENAI_BASE_URL`, `OPENAI_MODEL`, and optional `OPENAI_API_KEY`, as defined in [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md).
 
 **Database** (`db_secret_name`)
 
@@ -186,7 +220,7 @@ For simple RAG, missing Milvus and PGVector keys fails validation. Graph RAG req
 
 ## Presets
 
-Each preset fixes **ingestion, chunking search-space envelope, contextual enrichment, and inference concurrency**. ai4rag still optimizes embedding, retrieval, and generation (from the required model lists) within that envelope. Both presets use the **same KFP resource tier**.
+Each preset supplies **ingestion, default chunking candidates, contextual enrichment, and inference concurrency**. `search_space_config` can replace searchable dimensions subject to validation; extraction and runtime behavior remain preset-controlled. ai4rag optimizes over the effective search space. Both presets use the **same KFP resource tier**.
 
 | Preset | Chunking methods | Chunk sizes | Chunk overlaps | Docling PDF tables | Contextual enrichment | `inference_max_threads` |
 |--------|------------------|-------------|----------------|--------------------|-----------------------|-------------------------|
@@ -257,6 +291,8 @@ ai4rag explores chunking and retrieval combinations during optimization; GAM sel
 
 ## Related
 
+- [OpenAI-compatible model support](./ODH-ADR-0008-openai-compatible-model-support.md) — MaaS and OpenAI-compatible bindings, Secret access, and alternatives
+- [KFP structured input parameters](https://www.kubeflow.org/docs/components/pipelines/user-guides/data-handling/parameters/)
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — simple and Neo4j Graph RAG templates
 - [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) — metric catalog, preset-valid evaluator-qualified `optimization_metric`, and `evaluation_results.json` `document_key`; benchmark field is defined above

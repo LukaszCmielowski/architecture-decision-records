@@ -32,7 +32,7 @@ Research supports evaluating structural chunking but does not establish whole fu
 * Answer identifier lookup, behavior explanation, and bounded cross-file questions about an immutable repository snapshot, including legacy source and related files.
 * Balance retrieval quality with a small extension of existing AutoRAG components and dependencies.
 * Preserve exact source evidence and verifiable file / line citations.
-* Reuse HPO, MaaS, Connections, vector stores, pattern artifacts, evaluators, and optional MLflow tracking.
+* Reuse HPO, MaaS or OpenAI-compatible model bindings ([ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md)), Connections, vector stores, pattern artifacts, evaluators, and optional MLflow tracking.
 * Keep chunking selection consistent across optimization and production indexing.
 * Retain S3 as the pipeline's source contract, independently of whether files originate in Git or a legacy source export.
 
@@ -207,7 +207,7 @@ MVP acceptance requires:
 * Apply explicit path exclusions before indexing; exclude repository internals, credential files, binaries, and generated / vendored content by default. Exclusions reduce exposure but do not guarantee that arbitrary source contains no secrets.
 * Bound source file size and parser resources, reject paths or symlinks escaping the materialized snapshot, and pin grammar dependencies in the approved runtime image.
 * An MVP corpus must share one authorized audience. Separate indexes are required for different repository access policies; per-file authorization is outside this MVP.
-* Source, embeddings, retrieved contexts, and artifacts inherit corpus confidentiality and retention requirements. Private code uses approved MaaS endpoints and is excluded from telemetry by default.
+* Source, embeddings, retrieved contexts, and artifacts inherit corpus confidentiality and retention requirements. Private code uses approved MaaS or OpenAI-compatible endpoints and is excluded from telemetry by default.
 
 ## Risks
 

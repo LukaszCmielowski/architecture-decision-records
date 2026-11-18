@@ -13,7 +13,7 @@
 
 ## What
 
-This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate via MaaS through a Responses-compatible API, three consumers of that contract (inference notebook, starter-kit zip with Helm, one-click Agent Sandbox), the AutoRAG BFF test endpoint, and full-corpus index building through the managed documents indexing pipeline.
+This ADR documents AutoRAG pattern artifacts after optimization: the pattern.json schema, production retrieve-and-generate through a Responses-compatible API using MaaS or OpenAI-compatible model bindings, three consumers of that contract (inference notebook, starter-kit zip with Helm, one-click Agent Sandbox), the AutoRAG BFF test endpoint, and full-corpus index building through the managed documents indexing pipeline.
 
 ## Why
 
@@ -22,7 +22,7 @@ Optimized configurations must be portable across optimization, indexing, and inf
 ## Goals
 
 * Define the target pattern.json schema (`settings`, `indexing`, `inference`, `evaluation`)
-* Document how request-level generation and retrieval settings drive MaaS and LangChain retrieval
+* Document how request-level generation and retrieval settings drive model calls and LangChain retrieval
 * Document the inference notebook, parameterized starter-kit zip, Helm / BuildConfig deploy, and one-click Agent Sandbox
 * Document the AutoRAG BFF test endpoint (retrieve-and-generate from `pattern.json`; not the agent API)
 * Document indexing.pipeline_spec for the managed documents-indexing-pipeline
@@ -100,7 +100,7 @@ pattern.json
 │       ├── framework
 │       ├── protocol
 │       ├── image
-│       └── connections (maas_secret_name, db_secret_name)
+│       └── connections (selected model Secrets, db_secret_name)
 └── evaluation
     └── metrics[]
         ├── evaluator (unitxt | ragas | custom), name, description, scores (mean, ci_low, ci_high)
@@ -118,11 +118,15 @@ pattern.json
 
 `template_id` is required. Catalog and `provider_type` compatibility: [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md).
 
+For each embedding, generation, and graph-extraction model, preserve the binding type, model ID, normalized endpoint, and Secret reference defined in [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md). Carry those selected bindings into indexing parameters and inference connections; model ID alone is insufficient when endpoints differ. Credentials are resolved at runtime.
+
 GAM ranks patterns by the evaluator-qualified pipeline [`optimization_metric`](./ODH-ADR-0002-experiment-settings.md) ID. The matching `evaluation.metrics[]` entry is marked `optimization_metric: true`; its `scores.mean` is the pattern objective score ([ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md#optimization_metric)).
 
 ---
 
 ### Example pattern.json
+
+This example uses a shared MaaS Connection. Direct OpenAI-compatible models instead retain their selected per-model bindings from ADR 8.
 
 ```json
 {
@@ -249,7 +253,7 @@ LLM used at index time to extract entities and relations (ai4rag `Neo4jGraphStor
 
 | Field | Role |
 |-------|------|
-| `model_id` | MaaS foundation model for extraction |
+| `model_id` | Selected MaaS or OpenAI-compatible extraction model; preserve its binding per [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md). |
 | `model_params.temperature` | Sampling for extraction |
 | `model_params.max_completion_tokens` | Completion cap for extraction |
 | `extraction_config.mode` | `constrained` (fixed entity/relation allow-list) or `free` |
@@ -328,7 +332,7 @@ Ranker fields (`ranker_strategy`, `ranker_alpha`, `ranker_k`) apply only when `s
 
 ## Retrieve and generation
 
-Optimization and production use **MaaS** for Responses-compatible generation and embeddings (indexing and query-time vector search). For simple RAG, retrieval uses the LangChain vector-store adapter for `store_binding.provider_type` / `collection_name` (Milvus or PGVector credentials from `db_secret_name`).
+Optimization and production use the selected **MaaS or OpenAI-compatible bindings** for generation and embeddings (indexing and query-time vector search), following [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md). The consumer-facing Responses API is adapted to the selected endpoint's supported operations. For simple RAG, retrieval uses the LangChain vector-store adapter for `store_binding.provider_type` / `collection_name` (Milvus or PGVector credentials from `db_secret_name`).
 
 `settings` supplies defaults. A Responses-compatible request is a consumer-facing representation of the selected pattern settings; implementations may project those settings into the request shape while preserving the pattern's selected behavior. Requests may override only explicitly permitted nonsecret values. `connections` are deployment-only and are never accepted in the request.
 
@@ -368,7 +372,7 @@ Optimization and production use **MaaS** for Responses-compatible generation and
 
 ### Inference notebook
 
-`inference_notebook.ipynb` sits next to `pattern.json` under `rag_patterns/<pattern_name>/`. It is a generated workbench artifact for inspecting retrieval and generation with the pattern's MaaS and database Connections; it is not a server. `indexing_notebook.ipynb` builds the full-corpus index.
+`inference_notebook.ipynb` sits next to `pattern.json` under `rag_patterns/<pattern_name>/`. It is a generated workbench artifact for inspecting retrieval and generation with the pattern's selected model and database Connections; it is not a server. `indexing_notebook.ipynb` builds the full-corpus index.
 
 ### Agentic Starter-kit
 
@@ -376,11 +380,11 @@ Optimization and production use **MaaS** for Responses-compatible generation and
 
 ### One-click Deployment
 
-One-click deployment starts the default RAG application from `inference.runtime_spec`, using the prebuilt inference image and project Connections. It injects only the MaaS and database Connections; the request may supply permitted nonsecret settings while remaining consistent with the selected pattern. The Dashboard deployment guide owns runtime, Sandbox, and lifecycle details.
+One-click deployment starts the default RAG application from `inference.runtime_spec`, using the prebuilt inference image and project Connections. It supplies the selected MaaS or OpenAI-compatible model Secrets and database Connection; the request may supply permitted nonsecret settings while remaining consistent with the selected pattern. The Dashboard deployment guide owns runtime, Sandbox, and lifecycle details.
 
 ### Test endpoint
 
-The AutoRAG BFF runs interactive Responses-compatible retrieve-and-generate tests against a selected pattern's store and MaaS connection. It is a Dashboard test path, not the production agent API; request and response details are owned by the [AutoRAG BFF](https://github.com/opendatahub-io/odh-dashboard/tree/main/packages/autorag/bff).
+The AutoRAG BFF runs interactive Responses-compatible retrieve-and-generate tests against a selected pattern's store and model bindings. It is a Dashboard test path, not the production agent API; request and response details are owned by the [AutoRAG BFF](https://github.com/opendatahub-io/odh-dashboard/tree/main/packages/autorag/bff).
 
 ---
 
@@ -394,13 +398,13 @@ Index building populates the production vector store via the managed **`document
 | `parameters` | Pre-filled from optimization run + pattern `settings` |
 | `overrides_allowed` | Keys the UI may expose for user override at submit time; implementations preserve consistency between the indexed corpus, selected pattern, and serving configuration |
 
-**Parameter sources:** optimization run → `maas_secret_name`, `db_secret_name`, `input_data_*`; pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Graph patterns also copy `settings.knowledge_graph` onto `foundation_model_id`, `foundation_model_params`, and `kg_extraction_config` ([Graph-only fields](#graph-only-fields)). Secret fields are **names only** (Kubernetes Secret references).
+**Parameter sources:** optimization run → `db_secret_name`, `input_data_*`; selected pattern → model Secret references (shared `maas_secret_name` for MaaS or per-model OpenAI-compatible bindings); pattern `settings` → embedding (`embedding_model_id`, `embedding_params`), chunking, `collection_name` / `provider_type`. Graph patterns also copy `settings.knowledge_graph` onto `foundation_model_id`, `foundation_model_params`, and `kg_extraction_config` ([Graph-only fields](#graph-only-fields)). Secret fields are **names only** (Kubernetes Secret references).
 
 `parameters.input_data_keys` is the same **`list[str]`** as the optimization run (1–10 object keys or prefixes, same Connection/bucket). Production indexing uses that full list so the production corpus matches optimization. A one-element list is a single location. Corpus contract: [ODH-ADR-0002 — Corpus locations](./ODH-ADR-0002-experiment-settings.md#corpus-locations).
 
 **Workflow:** optimization completes → user selects pattern → read `pipeline_spec` → resolve managed pipeline → pre-fill run form → user confirms/overrides → submit → full corpus indexed → [retrieve and generation](#retrieve-and-generation) ready.
 
-**Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding (MaaS) → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change. Re-indexing must leave a coherent serving corpus, without unintended stale or duplicate content; replacement and update mechanics remain implementation-defined.
+**Pipeline steps:** load inputs → document discovery/extraction → chunking → embedding (selected model binding) → vector store write → validation/logging. Observable via KFP; re-runnable when documents or overrides change. Re-indexing must leave a coherent serving corpus, without unintended stale or duplicate content; replacement and update mechanics remain implementation-defined.
 
 ---
 
@@ -408,7 +412,8 @@ Index building populates the production vector store via the managed **`document
 
 - [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
 - [RAG templates](./ODH-ADR-0003-rag-templates.md) — simple vs Neo4j Graph RAG templates; which kit path each maps to
-- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, corpus list, benchmark JSON, presets, chunking, retrieval, HPO MaaS / database Connections
+- [AutoRAG optimization settings](./ODH-ADR-0002-experiment-settings.md) — pipeline parameters, corpus list, benchmark JSON, presets, chunking, retrieval, HPO model / database Connections
+- [OpenAI-compatible model support](./ODH-ADR-0008-openai-compatible-model-support.md) — MaaS and direct OpenAI-compatible bindings
 - [MLflow integration](./ODH-ADR-0006-mlflow-integration.md) — tracking pointers to pattern artifacts
 - [RHOAIENG-90017](https://redhat.atlassian.net/browse/RHOAIENG-90017) — AutoRAG BFF pattern test
 - [opendatahub-io/odh-dashboard AutoRAG BFF](https://github.com/opendatahub-io/odh-dashboard/tree/main/packages/autorag/bff)

@@ -56,9 +56,9 @@ Vector RAG retrieves document chunks, then grounds one generation call in those 
 
 | Concern | Contract |
 |---------|----------|
-| Indexing | Chunk → MaaS embeddings → vector store. |
+| Indexing | Chunk → selected MaaS or OpenAI-compatible embedding binding → vector store. |
 | Retrieval | `number_of_chunks`, `search_mode` (`vector`, `keyword`, `hybrid`), and optional ranker. |
-| Generation | MaaS model and prompt settings from `settings.generation`. |
+| Generation | Selected MaaS or OpenAI-compatible model binding and prompt settings from `settings.generation`. |
 | Pattern | `template_id` is `simple_rag` or `agentic_rag`. `settings.store_binding` identifies the selected Milvus or PGVector collection. |
 | Optimization | Chunking, embedding, retrieval, and generation dimensions from [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md). |
 
@@ -70,7 +70,7 @@ Graph RAG currently uses Neo4j, through `neo4j-graphrag`, for knowledge-graph co
 |---------|----------|
 | Indexing | Extract entities and relations from the document corpus into Neo4j graph, vector, and full-text indexes. |
 | Retrieval | `search_mode: graph`. Neighbor expansion fields apply only in this mode ([ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#graph-only-fields)). Ranker fields do not apply. |
-| Generation | MaaS-backed generation grounded in graph or hybrid context. |
+| Generation | MaaS or OpenAI-compatible generation grounded in graph or hybrid context. |
 | Pattern | `template_id` is `simple_graph_rag` or `agentic_graph_rag`; `settings.store_binding.provider_type: neo4j`. Extra `pattern.json` keys: [ODH-ADR-0004 Graph-only fields](./ODH-ADR-0004-rag-pattern-inference.md#graph-only-fields). |
 | Optimization | Query-time retriever type, top-k, Cypher depth or limit, and generation settings. Index-changing settings use constrained allow-lists. |
 
@@ -78,7 +78,7 @@ Graph RAG does not share Vector RAG chunk collections. LangGraph may orchestrate
 
 ## Template-to-deployment mapping
 
-Serving behavior is defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation).
+Model binding selection follows [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md). Serving behavior is defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md#retrieve-and-generation).
 
 | `template_id` | Deployment artifact |
 |---------------|---------------------|
