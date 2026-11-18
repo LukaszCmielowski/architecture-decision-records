@@ -66,18 +66,9 @@ stringData:
 
 A shared OpenAI-compatible endpoint has one Secret per selected model. This duplicates connection values but keeps each list entry self-contained. The same Secret may appear in both role lists if the model supports both operations.
 
-MaaS retains its shared Connection with `MAAS_BASE_URL` and `MAAS_API_KEY`; `embedding_models` and `generation_models` select its model IDs. Normalize the MaaS API base while preserving the gateway path and ensuring a single `/v1` suffix.
+### Binding requirements
 
-### Resolution and validation
-
-Before extraction or pre-selection, resolve and validate model bindings. Check:
-
-* Non-empty embedding and generation Secret lists, unique bindings within each role, and required Secret keys.
-* Each model's limits, embedding or generation operation, and endpoint reachability.
-
-Model-consuming components read the named Secrets using the run's ServiceAccount, with namespace-local `get` access restricted to the referenced names. Credential values stay inside consuming components. This supports runtime-length candidate lists without compiling a fixed number of Secret environment bindings; verify the access and resolution path on the target RHOAI pipeline backend.
-
-Record ordered model IDs, normalized endpoints, and Secret names with the run. Downstream steps use these bindings and resolve credentials at runtime. Later endpoint failures retain existing trial failure semantics. Identify candidates by Secret name and model ID, including the resolved endpoint in client and cache identity.
+Each run requires valid embedding and generation bindings supporting the requested operations. Record model IDs, endpoints, and Secret references as run provenance; credential values remain in Secrets and authorized runtime components. The run's identity must have access limited to the referenced Secrets. Secret delivery and validation mechanics belong to the implementation.
 
 ### Evaluation and winning patterns
 
@@ -89,24 +80,16 @@ Map Secrets to authorized Connections when deploying into another namespace. Com
 
 ## Alternatives
 
-### Model binding delivery
-
 | Option | Advantages | Drawbacks |
 | ------ | ---------- | --------- |
 | Model Secret lists (selected) | Reusable, explicit bindings; no extra configuration resource. | Requires a defined Secret format and scoped runtime Secret reads. |
 | ConfigMap containing model bindings | Named, reusable configuration; GitOps support; flexible endpoint and credential references. | Adds lookup RBAC, schema compatibility, ownership, and cleanup. Dashboard creation per run/edit can accumulate ConfigMaps; shared edits affect later runs. |
-| Dictionary containing model bindings | Flexible per-model endpoint and Secret mappings recorded with the run. | More input fields and validation; reuse needs saved configuration. |
-
-ConfigMap delivery would require a snapshot and a retention policy covering failed submissions and deleted runs. Kubernetes validates the ConfigMap envelope; AutoRAG validates model bindings. Saved inputs and reruns need compatibility or migration when binding schemas change.
-
-### Model bindings
-
-| Option | Advantages | Drawbacks |
-| ------ | ---------- | --------- |
+| Dictionary of model IDs, URLs, and Secret name/key references | Flexible per-model bindings; reuses arbitrary credential formats and shared endpoint credentials; recorded with the run. | More fields and validation than self-contained Secrets; reuse needs saved configuration. |
 | Custom AI Asset endpoints | Reuses Dashboard registration, discovery, and credential references. | Depends on AI Assets schema and resource lifecycle; needs adaptation into pipeline bindings. |
 | One embedding and one generation Secret | Simple fixed pair; supports KFP Secret environment injection. | Limits independently authenticated candidates to one per role. |
 | Require every model behind one MaaS Connection | One shared connection without duplicated credential values. | Requires direct and independently authenticated endpoints to be exposed through MaaS first. |
-| Model entries with explicit URL and Secret name/key | Reuses arbitrary credential formats and shared gateway credentials. | More per-model fields and validation than a self-contained Secret. |
+
+ConfigMap delivery would require a snapshot and a retention policy covering failed submissions and deleted runs. Kubernetes validates the ConfigMap envelope; AutoRAG validates model bindings. Saved inputs and reruns need compatibility or migration when binding schemas change.
 
 For custom AI Assets, Dashboard resolves selected models under the submitting user's permissions from `gen-ai-aa-custom-model-endpoints` / `config.yaml`. Its bindings carry model ID, base URL, and Secret name/key (`api_key` for Dashboard-created entries). Integration must map them to the selected Secret contract or extend the pipeline binding schema, preserving asset identity in the run snapshot. See the [implementation](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/token_k8s_client.go) and [example configuration](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml).
 
