@@ -1,4 +1,4 @@
-# Open Data Hub - AutoRAG Search Space from a ConfigMap
+# Open Data Hub - AutoRAG Model Secrets and Search-Space Configuration
 
 |                |            |
 | -------------- | ---------- |
@@ -13,11 +13,11 @@
 
 ## What
 
-Accept an optional ConfigMap defining AutoRAG's model candidates, endpoint and Secret bindings, chunking, retrieval, and generation settings. A run can compare direct vLLM endpoints with Models as a Service (MaaS). Selected bindings carry through optimization, evaluation, indexing, and inference; existing preset-based runs remain supported.
+Accept model candidates through `embedding_secret_names: list` and `generation_secret_names: list`, and search-space overrides through `search_space_config: dict`. Each Secret identifies one OpenAI-compatible model, including models served directly by vLLM or through Models as a Service (MaaS). Selected bindings carry through optimization, evaluation, indexing, and inference.
 
 ## Why
 
-Users need corpus-specific search settings and independently authenticated models beyond the presets in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md). The linked RFEs request direct vLLM support and advanced configuration through Dashboard, pipeline, and API access; this ADR defines the pipeline input.
+Users need independently authenticated models and corpus-specific settings beyond the presets in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md). Explicit Secret lists keep model connections reusable and credentials outside pipeline parameters; a dictionary groups advanced settings without another Kubernetes resource.
 
 ## Non-Goals
 
@@ -25,144 +25,132 @@ Model provisioning, subscription or credential management, changes to other expe
 
 ## How
 
-### Pipeline input and precedence
+### Pipeline inputs
 
-Add `search_space_configmap_name: str = ""` to `documents_rag_optimization_pipeline`, referencing `data["search-space.yaml"]` in a ConfigMap in the run's namespace. Empty preserves existing behavior. When supplied, `maas_secret_name`, `embedding_models`, and `generation_models` must be empty; make these legacy inputs optional and validate the selected mode.
+Add these parameters to `documents_rag_optimization_pipeline`:
 
-The `preset` determines extraction behavior and runtime defaults. Omitted search dimensions inherit preset defaults; supplied candidate lists replace them.
+| Parameter | Type | Default | Meaning |
+| --------- | ---- | ------- | ------- |
+| `embedding_secret_names` | `list` | `[]` | Ordered Secret names for embedding candidates. |
+| `generation_secret_names` | `list` | `[]` | Ordered Secret names for generation candidates. |
+| `search_space_config` | `dict` | `{}` | Chunking, retrieval, and generation search-space overrides. |
 
-### Configuration
+List elements are non-empty strings referencing Secrets in the run's namespace. When either model list is supplied, both must be non-empty and the legacy `maas_secret_name`, `embedding_models`, and `generation_models` inputs must be empty. Make those legacy inputs optional; when both new lists are empty, preserve their existing validation and behavior.
 
-AutoRAG validates the versioned document inside the ConfigMap. Model IDs below are illustrative.
+An empty dictionary uses preset defaults. Otherwise, supplied candidate lists replace the corresponding defaults; omitted dimensions inherit them. The `preset` continues to control extraction and runtime defaults. Search-space overrides apply to either model-input mode.
+
+Example pipeline inputs:
+
+```yaml
+embedding_secret_names:
+  - embedding-model-connection
+generation_secret_names:
+  - vllm-chat-connection
+  - maas-chat-connection
+search_space_config:
+  apiVersion: autorag.opendatahub.io/v1alpha1
+  kind: AutoRAGSearchSpace
+  chunking:
+    method: [recursive]
+    chunk_size: [256, 512, 1024]
+    chunk_overlap: [0, 64]
+  retrieval:
+    search_mode: [vector, hybrid]
+    number_of_chunks: [3, 5, 10]
+  generation:
+    parameters:
+      temperature: [0.0, 0.2]
+      max_completion_tokens: [512, 1024]
+```
+
+KFP carries the dictionary as a `STRUCT` parameter. AutoRAG validates its schema, with model selection supplied exclusively by the model inputs. Search dimensions use finite, non-empty candidate lists; one value fixes a setting. Generation parameters apply to all generation candidates. Chunking and retrieval fields follow [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md).
+
+### Model Secret contract
+
+Each Secret supplies one binding:
+
+| Key | Requirement |
+| --- | ----------- |
+| `OPENAI_BASE_URL` | Complete API base URL, preserving gateway paths and including `/v1` where required. |
+| `OPENAI_MODEL` | Model ID sent in embedding or chat-completion requests. |
+| `OPENAI_API_KEY` | Required for authenticated endpoints; omit for unauthenticated endpoints. |
+
+For example, a direct vLLM model uses:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: autorag-advanced-search-space
-data:
-  search-space.yaml: |
-    apiVersion: autorag.opendatahub.io/v1alpha1
-    kind: AutoRAGSearchSpace
-    models:
-      embedding:
-        - model_id: embedding-model
-          provider: maas
-          secret_name: maas-connection
-      generation:
-        - model_id: served-vllm-model
-          provider: openai
-          secret_name: vllm-connection
-        - model_id: maas-chat-model
-          provider: maas
-          secret_name: maas-connection
-    chunking:
-      method: [recursive]
-      chunk_size: [256, 512, 1024]
-      chunk_overlap: [0, 64]
-    retrieval:
-      search_mode: [vector, hybrid]
-      number_of_chunks: [3, 5, 10]
-    generation:
-      parameters:
-        temperature: [0.0, 0.2]
-        max_completion_tokens: [512, 1024]
+  name: vllm-chat-connection
+type: Opaque
+stringData:
+  OPENAI_BASE_URL: https://vllm.example.com/v1
+  OPENAI_MODEL: served-chat-model
+  OPENAI_API_KEY: <endpoint-token>
 ```
 
-`models.embedding` and `models.generation` are non-empty lists of model bindings. Multiple models may share a Secret. The `openai` provider supports direct vLLM and compatible LLMInferenceService endpoints.
-
-Search dimensions use finite, non-empty candidate lists; a one-element list fixes a value. `generation.parameters` applies to all generation models and supports `temperature` and `max_completion_tokens`. Users needing different settings per model submit separate runs.
-
-Chunking and retrieval fields follow [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md), including method-specific fields such as `include_metadata`, with documented types, bounds, units, and defaults.
-
-### Endpoint and credential binding
-
-Each model supplies `model_id`, `provider`, and a namespace-local `secret_name`. Both providers use OpenAI-compatible operations; the adapter maps generation settings to supported fields. Required Secret keys are:
-
-| Provider | Required Secret keys | Contract |
-| -------- | -------------------- | -------- |
-| `maas` | `MAAS_BASE_URL`, `MAAS_API_KEY` | Reuse AutoRAG's existing MaaS Connection format. |
-| `openai` | `OPENAI_BASE_URL`, `OPENAI_API_KEY` | New AutoRAG contract for direct OpenAI-compatible inference, including vLLM. |
-
-`OPENAI_BASE_URL` is the complete API base, including any required path and `/v1`. Normalize a legacy `MAAS_BASE_URL`, preserving its gateway path prefix and ensuring a single `/v1` suffix.
-
-For unauthenticated `openai` endpoints, supply `base_url` instead of `secret_name`; `maas` requires a Secret.
-
-Within each role, identify candidates by `(provider, secret_name, model_id)`, substituting normalized `base_url` for unauthenticated entries. Clients and caches include the resolved endpoint binding in model identity.
+MaaS models use the same keys with their gateway URL and authorized API key. A gateway serving multiple models has one Secret per selected model. This duplicates connection values but keeps each pipeline list entry self-contained. The same Secret may appear in both role lists if the model supports both operations. Legacy MaaS inputs retain their existing `MAAS_*` format.
 
 ### Resolution and validation
 
-Before extraction or model pre-selection, read the ConfigMap once, apply defaults, and validate. Save the effective configuration with the preparation report and MLflow artifacts, including ConfigMap name, UID, resource version, payload version, normalized endpoints, and digest. Downstream steps use this snapshot; edits affect new runs.
+Before extraction or pre-selection, resolve the named Secrets, apply search defaults, and validate:
 
-Validation must:
+* Non-empty model lists in the selected mode, unique names within each role, and required Secret keys.
+* Search schema, template/backend constraints, model limits, overlap smaller than chunk size, and generation settings supported by every candidate.
+* Each model's embedding or generation operation, endpoint reachability, search-space bounds, and trial budgets. Report errors by field path and show the effective search-space size.
 
-* Check schema, unique candidates, and exactly one Secret or URL binding per model.
-* Enforce template/backend constraints, model limits, overlap smaller than chunk size, and generation settings supported by every selected model; report errors by field path.
-* Check Secret access and required keys, and probe each model's embedding or generation operation. Later endpoint failures retain existing trial failure semantics.
-* Enforce search-space bounds and trial budgets, and show the effective search-space size.
+Model-consuming components read the named Secrets using the run's ServiceAccount, with namespace-local `get` access restricted to the referenced names. Credential values stay inside consuming components. This supports runtime-length candidate lists without compiling a fixed number of Secret environment bindings; verify the access and resolution path on the target RHOAI pipeline backend.
 
-### Evaluation and winning-pattern consumers
+Persist effective settings, ordered model IDs, normalized endpoints, Secret names, payload version, and a configuration digest with the preparation report and MLflow artifacts. Downstream steps use this snapshot and resolve credentials at runtime. Later endpoint failures retain existing trial failure semantics. Identify candidates by Secret name and model ID, including the resolved endpoint in client and cache identity.
+
+### Evaluation and winning patterns
 
 Use selected bindings for all model calls. Preserve [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)'s first-generation-model and first-embedding-model evaluator selection, fixed across trials.
 
-Winning patterns record model IDs, provider/endpoint bindings, Secret names, and effective settings. Extend [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) so indexing, generated notebooks, starter kits, Dashboard tests, and deployed inference consume them. Index reuse accounts for embedding bindings and indexing settings. Legacy patterns retain their MaaS interpretation.
+Winning patterns record selected model IDs, endpoints, Secret names, and effective settings. Extend [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) so indexing, generated notebooks, starter kits, Dashboard tests, and deployed inference consume them. Index reuse accounts for embedding bindings and indexing settings. Legacy patterns retain their MaaS interpretation.
 
-Resolve credentials at runtime; map Secrets to authorized Connections when deploying into another namespace. Compare resolved endpoints with the snapshot; changes require rebinding and revalidation. Changed embedding behavior requires reindexing. Credential rotation preserves model identity. Model weights follow the endpoint's lifecycle.
+Map Secrets to authorized Connections when deploying into another namespace. Compare resolved model IDs and endpoints with the snapshot; changes require rebinding and revalidation. Changed embedding behavior requires reindexing. Credential rotation preserves model identity; model weights follow the endpoint's lifecycle.
 
 ## Alternatives
-
-Configuration delivery and model selection are separate choices and can be combined.
 
 ### Configuration delivery
 
 | Option | Advantages | Drawbacks |
 | ------ | ---------- | --------- |
-| ConfigMap reference (proposed) | Named, reusable configuration; GitOps support; small pipeline signature. | Adds lookup RBAC, resource ownership, maintenance, and cleanup. Dashboard creation per run/edit can accumulate ConfigMaps. Shared edits affect new runs. |
-| `advanced_config: dict` | One structured input recorded with the run; no configuration resource or lookup; new fields keep the same parameter. | Needs object validation, Dashboard form support, and a saved-configuration mechanism for reuse. |
-| Separate parameters, e.g. `chunk_sizes`, `temperatures` | Individual types and defaults; simple forms for a few settings. | Each dimension extends the pipeline signature; nested model bindings are awkward. |
+| Secret lists plus `search_space_config: dict` (selected) | Explicit model bindings; one structured settings input recorded with the run; no extra configuration resource. | Requires the model Secret format, scoped runtime Secret reads, and object validation. |
+| Search-space ConfigMap reference | Named, reusable configuration; GitOps support; small pipeline signature. | Adds lookup RBAC, ownership, maintenance, and cleanup. Dashboard creation per run/edit can accumulate ConfigMaps; shared edits affect later runs. |
+| One `advanced_config: dict` containing models and settings | Flexible per-model endpoint, provider, and Secret mappings in one object. | Larger schema and Dashboard form; combines connection definitions with search settings. |
+| Separate parameters, e.g. `chunk_sizes`, `temperatures` | Individual types and defaults; simple forms for a few settings. | Each dimension extends the pipeline signature; nested settings are awkward. |
 
-All forms require input compatibility or migration for saved configurations and reruns after upgrades. Kubernetes validates the ConfigMap envelope; AutoRAG validates its payload. Dashboard-generated ConfigMaps also need retention and cleanup rules for failed submissions and deleted runs.
+All forms require compatibility or migration for saved configurations and reruns after upgrades. A ConfigMap alternative would read `search-space.yaml` via `search_space_configmap_name`, snapshot the resolved document, and define retention for generated resources, failed submissions, and deleted runs. Kubernetes validates the envelope; AutoRAG validates the payload. [LLMInferenceService scheduler configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/deploy_models_using_distributed_inference_with_llm-d/configuring-llm-scheduler) provides an existing ConfigMap reference pattern.
 
-YAML/JSON text is an encoding variant of the dictionary option: it carries the same document but needs decoding. Prefer `dict` where supported. Separate parameters expose each setting individually rather than grouping them in that document.
+YAML/JSON text is an encoding variant of a dictionary input and requires decoding before validation.
 
-#### Dictionary input
-
-`advanced_config: dict = {}` carries the ConfigMap's search-space object as a KFP `STRUCT` parameter. Empty retains legacy behavior; otherwise apply the same schema and precedence. If both forms are offered, accept only one per run.
-
-An initial component outputs effective settings and `embedding_secret_name`/`generation_secret_name`. Downstream tasks use those outputs with `kfp.kubernetes.use_secret_as_env()` and fixed provider-specific key mappings, avoiding Secret API reads in component code.
-
-A KFP/kfp-kubernetes 2.16.1 compilation probe verified this fixed pair of dynamic Secret references. Multiple independently authenticated candidates per role require additional injection design; execution on the target RHOAI backend remains an integration check.
-
-### Model selection
+### Model bindings
 
 | Option | Advantages | Drawbacks |
 | ------ | ---------- | --------- |
-| Custom AI Asset endpoints | Reuses Dashboard registration, discovery, and credential references. | Depends on AI Assets schema and resource lifecycle; needs resolution into pipeline bindings. |
-| Explicit embedding/generation Secret names | Small interface for one binding per role; reuses pipeline Secret injection. | Needs a defined Secret format and model IDs; multiple bindings per role need a richer structure. |
-| One MaaS Connection | Reuses current routing and credentials. | Excludes direct vLLM and independently authenticated endpoints. |
+| Custom AI Asset endpoints | Reuses Dashboard registration, discovery, and credential references. | Depends on AI Assets schema and resource lifecycle; needs adaptation into pipeline bindings. |
+| One embedding and one generation Secret | Simple fixed pair; supports KFP Secret environment injection. | Limits independently authenticated candidates to one per role. A compilation probe for this pair does not validate arbitrary Secret lists. |
+| One MaaS Connection plus model IDs | Reuses current routing and credentials without duplicating connection values. | Excludes direct vLLM and independently authenticated endpoints. |
+| Model entries with explicit URL and Secret name/key | Reuses arbitrary credential formats and shared gateway credentials. | More per-model fields and validation than a self-contained Secret. |
 
-#### Custom AI Asset endpoints
-
-The Dashboard stores custom model metadata in `gen-ai-aa-custom-model-endpoints`, under `config.yaml`, with Secret name/key references. Users register or select assets; at submission, Dashboard resolves each selection under their permissions into a model ID, base URL, and Secret reference passed to the pipeline. Include asset identity in the run snapshot and preserve resolved bindings in winning patterns.
-
-This requires extending pipeline bindings to accept the asset's Secret key (`api_key` for Dashboard-created entries; other keys are supported by the configuration) alongside its base URL. Verify injection and endpoint reachability from pipeline pods. See the [implementation](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/token_k8s_client.go) and [example configuration](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml).
+For custom AI Assets, Dashboard resolves selected models under the submitting user's permissions from `gen-ai-aa-custom-model-endpoints` / `config.yaml`. Its bindings carry model ID, base URL, and Secret name/key (`api_key` for Dashboard-created entries). Integration must map them to the selected Secret contract or extend the pipeline binding schema, preserving asset identity in the run snapshot. See the [implementation](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/token_k8s_client.go) and [example configuration](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml).
 
 ## Security and Privacy Considerations
 
-Authorize configuration and Secret references for the submitting user; the run needs its own resource access and endpoint credentials, independent of the Dashboard session. Prefer pipeline Secret injection and limit credentials to consuming components. Keep credential values out of parameters, artifacts, logs, and errors; reject inline credentials and credential-bearing URLs. Protect configuration snapshots with project access controls and apply platform egress policies.
+Authorize Secret references for the submitting user and the run's ServiceAccount independently of the Dashboard session. The referenced-name allow-list must be enforced before execution. Keep credential values out of parameters, snapshots, logs, and errors; reject credentials embedded in URLs. Protect configuration snapshots with project access controls and apply platform egress policies.
 
 ## Risks
 
-* Endpoint capabilities and availability vary. Early validation reduces failures; runtime requests can still exceed context limits or encounter endpoint changes.
-* Release the new input only when pipeline preparation, optimization, Dashboard submission, indexing, and inference preserve the selected bindings.
+* Secret-per-model bindings duplicate credentials for models sharing a gateway; rotation must update each affected Secret.
+* Endpoint capabilities, availability, and model weights can change during a run.
+* Release the new inputs only when candidate-list resolution and downstream pattern consumers preserve the selected bindings.
 
 ## References
 
 * [AutoRAG RAG templates](./ODH-ADR-0003-rag-templates.md)
 * [RHOAI Connections API](../operator/ODH-ADR-Operator-0009-connection-api.md)
-* [LLMInferenceService scheduler configuration](https://docs.redhat.com/en/documentation/red_hat_openshift_ai_self-managed/3.5/html/deploy_models_using_distributed_inference_with_llm-d/configuring-llm-scheduler) — existing ConfigMap reference pattern for `EndpointPickerConfig`.
-* [LLMInferenceServiceConfig](https://access.redhat.com/articles/7149159) — serving templates referenced through `spec.baseRefs`.
-* [KServe scheduler reference and base-reference API types](https://github.com/kserve/kserve/blob/master/pkg/apis/serving/v1alpha1/llm_inference_service_types.go)
-* [Kubernetes component configuration: kube-scheduler](https://kubernetes.io/docs/reference/config-api/kube-scheduler-config.v1/)
-* [KFP dictionary input parameters](https://www.kubeflow.org/docs/components/pipelines/user-guides/data-handling/parameters/)
+* [KFP dictionary and list input parameters](https://www.kubeflow.org/docs/components/pipelines/user-guides/data-handling/parameters/)
 * [KFP Kubernetes Secret injection](https://kfp-kubernetes.readthedocs.io/en/kfp-kubernetes-2.17/_modules/kfp/kubernetes/secret.html)
+* [Kubernetes RBAC resource names](https://kubernetes.io/docs/reference/access-authn-authz/rbac/#referring-to-resources)
