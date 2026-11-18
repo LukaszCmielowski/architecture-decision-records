@@ -4,7 +4,7 @@
 | -------------- | ---------- |
 | Date           | 2026-11-17 |
 | Scope          | AutoRAG Component |
-| Status         | Approved |
+| Status         | Proposed |
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
