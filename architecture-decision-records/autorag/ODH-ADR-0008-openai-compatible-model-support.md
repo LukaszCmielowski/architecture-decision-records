@@ -13,7 +13,7 @@
 
 ## What
 
-Support Models as a Service (MaaS) through `maas_secret_name` and model-ID lists, and additional OpenAI-compatible models through `embedding_secret_names: list` and `generation_secret_names: list`. Accept search-space overrides through `search_space_config: dict`. A run can compare candidates from both sources; selected bindings carry through optimization, evaluation, indexing, and inference.
+Add direct support for OpenAI-compatible embedding and generation models, including standalone vLLM deployments, through `embedding_secret_names: list` and `generation_secret_names: list`. Runs can use these models independently of MaaS or alongside MaaS candidates. Preserve selected model bindings across optimization, evaluation, indexing, and inference.
 
 ## Why
 
