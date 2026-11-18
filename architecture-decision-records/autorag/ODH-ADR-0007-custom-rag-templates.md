@@ -15,7 +15,9 @@
 
 Allow AutoRAG users to optimize customer-hosted RAG services through a defined subset of the **Responses API and `file_search` contract**. The endpoint owns retrieval and generation; AutoRAG owns experiment orchestration, evaluation, ranking, artifacts, and MLflow integration.
 
-In v1, AutoRAG varies only supported, documented Responses and `file_search` request parameters. It does not accept endpoint-specific parameter schemas, request mappings, custom response envelopes, or function-call execution delegated to AutoRAG.
+The endpoint may be implemented directly by the customer's RAG service or by a customer-managed compatibility proxy. A proxy may translate requests and responses between this contract and the service's native API; the underlying service need not change its API.
+
+In v1, AutoRAG varies only supported, documented Responses and `file_search` request parameters. It does not accept endpoint-specific parameter schemas, custom response envelopes, or function-call execution delegated to AutoRAG. AutoRAG does not configure or execute endpoint-specific request mappings or REST adapters; customer-managed translation behind the endpoint is allowed.
 
 ai4rag provides a `RemoteRAGTemplate` (`BaseRAGTemplate` subclass) for this contract. Optimization operates against a fixed index, supplied by the customer or prepared through the built-in documents indexing pipeline.
 
@@ -45,7 +47,8 @@ The endpoint may use custom functions or agent flows internally. It must expose 
 ## Non-Goals (v1)
 
 * Full Responses API coverage, streaming, or server-side conversation management.
-* Endpoint-specific optimization parameters, custom JSON Schemas, arbitrary REST adapters, or custom response envelopes.
+* Endpoint-specific optimization parameters, custom JSON Schemas, or custom response envelopes in AutoRAG.
+* Endpoint-specific request mappings or arbitrary REST adapters configured or executed by AutoRAG. Customer-managed compatibility proxies are allowed.
 * Returning unfinished function calls for AutoRAG to execute and resume.
 * Optimizing chunking, embedding models, index construction, or proprietary agent settings through the remote request contract.
 * Custom ingestion APIs on the endpoint, including Files / Vector Stores upload APIs.
@@ -59,10 +62,13 @@ The endpoint may use custom functions or agent flows internally. It must expose 
 | Responsibility | Owner |
 | --- | --- |
 | Retrieval, generation, internal agents and tool execution | Customer endpoint |
+| Compatibility proxy, request/response translation, and authentication to downstream services when a proxy is used | Customer |
 | GAM, benchmark handling, Unitxt / Ragas, leaderboard, and artifacts | AutoRAG |
 | Index preparation | Built-in platform pipeline or customer tooling |
 | Mapping the prepared index to `file_search.vector_store_ids` | Customer endpoint / deployment integration |
 | Connection authorization and network reachability | User / platform |
+
+When a proxy is used, the Connection points to the proxy. The customer owns preservation of the selected request controls' documented semantics, actual retrieval results, document identities, and errors across translation. A proxy must reject unsupported controls clearly and must not fabricate retrieved passages or document identities when the underlying service does not expose them. Translation does not extend the v1 optimization allowlist.
 
 ### Pipeline surface
 
@@ -71,7 +77,7 @@ The endpoint may use custom functions or agent flows internally. It must expose 
 | `custom_rag_secret_name` | Connection to the endpoint (`uri`, API key / token). |
 | `custom_rag_config` | Non-secret run configuration: standard request defaults, candidate choices for supported fields, and optional document-id mapping. |
 
-`custom_rag_config` replaces an endpoint-specific template manifest. AutoRAG owns the field definitions and validation; customers supply values and candidate choices, not schemas or mapping expressions. A [Template Builder](./ODH-ADR-0008-custom-rag-template-builder.md) may produce a conforming endpoint and this run configuration, but its authoring metadata does not extend the v1 optimization contract.
+`custom_rag_config` replaces an endpoint-specific template manifest. AutoRAG owns the field definitions and validation; customers supply values and candidate choices, not schemas or mapping expressions. Deployment supplies runtime Connections and store configuration; the optimization wizard constructs this run configuration.
 
 The user also selects an index mode and supplies its existing corpus / store inputs. Benchmark, objective, budget, and evaluator settings follow the normal AutoRAG pipeline.
 
@@ -149,7 +155,7 @@ Patterns use `template_id: "custom:remote_responses"`.
 
 ### Wire contract
 
-The endpoint base URL and authentication come from the Connection:
+The endpoint base URL and authentication come from the Connection, which targets either the RAG service directly or its customer-managed compatibility proxy:
 
 ```http
 POST {uri}/v1/responses
@@ -256,7 +262,7 @@ flowchart TB
   Validate --> GAM[GAM candidate selection]
   GAM --> Remote[RemoteRAGTemplate]
   Bench[Benchmark questions] --> Remote
-  Remote -->|"POST /v1/responses\nfile_search + standard controls"| Endpoint[Customer RAG endpoint]
+  Remote -->|"POST /v1/responses\nfile_search + standard controls"| Endpoint["Customer RAG endpoint\ndirect service or compatibility proxy"]
   Endpoint --> Rows["Answer + search results"]
   Rows --> Eval[Unitxt / Ragas]
   Eval --> Leaderboard[Leaderboard]
@@ -267,7 +273,7 @@ flowchart TB
 
 ### User experience
 
-1. Deploy or select a conforming RAG service and create its Connection.
+1. Deploy or select a conforming RAG service, or place a customer-managed compatibility proxy in front of an existing service. Create a Connection to the conforming endpoint.
 2. Select a prepared index, or configure the built-in indexing pipeline to prepare one the service can query.
 3. In the AutoRAG wizard, choose **Custom (Responses + file_search)**, select the Connection, and configure fixed values and candidate choices from the standard field allowlist. Supply document-id mapping if needed.
 4. Choose the benchmark, objective, and budget. Validate the configuration and endpoint before starting GAM.
@@ -338,6 +344,7 @@ These consumers must support the remote discriminator before custom patterns are
 | --- | --- |
 | Connection handling, remote client, GAM, evaluators, and artifacts | Endpoint implementation, internal tools, availability, and answer quality |
 | Validation of the standard request subset and required search results | Honoring selected controls and exposing conforming responses |
+| One HTTP contract for direct and proxied endpoints | Proxy implementation, downstream authentication, and faithful request/response translation |
 | Built-in index pipeline behavior | Pre-built index correctness and endpoint-to-store configuration |
 
 ## Alternatives
@@ -346,7 +353,7 @@ These consumers must support the remote discriminator before custom patterns are
 | --- | --- |
 | Responses + `file_search` subset with built-in or pre-built indexes | **Selected:** One wire contract and bounded search space; custom logic stays behind the endpoint. |
 | Generic parameter manifest and custom response extensions | **Deferred:** More flexibility, but requires endpoint-specific schemas, mappings, UI, and normalization. |
-| Arbitrary REST adapters or externally executed function tools | **Deferred:** Adds protocol mapping or tool-loop ownership to AutoRAG. Internal endpoint function calling remains allowed. |
+| AutoRAG-managed REST adapters or externally executed function tools | **Deferred:** Adds protocol mapping or tool-loop ownership to AutoRAG. Customer-managed compatibility proxies and internal endpoint function calling remain allowed. |
 | Custom Files / Vector Stores ingestion APIs | **Deferred:** A separate index protocol is not needed for inference-time optimization. |
 | OCI workers or notebook execution inside optimization | **Deferred:** Adds customer-code execution and dependency management to the optimization runtime. |
 | Broader built-in configuration only | **Insufficient alone:** Does not support existing proprietary RAG services. |
@@ -363,8 +370,7 @@ These consumers must support the remote discriminator before custom patterns are
 
 * Additional documented Responses controls through explicit profile revisions.
 * Endpoint implementation / index fingerprints for stricter promotion checks.
-* Custom parameter schemas, response adapters, or ingestion APIs only if the fixed contract proves insufficient.
-* A separately scoped Template Builder that produces endpoints conforming to this profile.
+* Custom parameter schemas, AutoRAG-managed response adapters, or ingestion APIs only if the fixed contract proves insufficient.
 
 ## Related
 
@@ -374,5 +380,4 @@ These consumers must support the remote discriminator before custom patterns are
 * [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
 * [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
 * [MLflow integration](./ODH-ADR-0006-mlflow-integration.md)
-* [Custom RAG Template Builder](./ODH-ADR-0008-custom-rag-template-builder.md)
 * [OpenAI Responses API](https://developers.openai.com/api/reference/python/resources/responses/methods/create) · [File search](https://developers.openai.com/api/docs/guides/tools-file-search)
