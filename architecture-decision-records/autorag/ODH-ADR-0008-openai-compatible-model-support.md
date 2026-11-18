@@ -27,7 +27,7 @@ Model provisioning, subscription or credential management, changes to other expe
 
 ### Pipeline inputs
 
-The pipeline parameter surface is defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#pipeline-parameters). Each list must be non-empty, reference Secrets in the run's namespace, and preserve candidate order. Models must support the requested operation.
+The pipeline parameter surface is defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#pipeline-parameters). When using the direct OpenAI-compatible inputs, both Secret lists must be non-empty. Entries reference Secrets in the run's namespace and preserve candidate order. Models must support the requested operation.
 
 Example direct-endpoint inputs:
 
@@ -67,6 +67,8 @@ stringData:
 Use selected bindings for all model calls. Preserve [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md)'s first-generation-model and first-embedding-model evaluator selection, fixed across trials.
 
 Runs and winning patterns record selected model IDs, binding type (`maas` or `openai`), endpoints, and Secret names. Consumers defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)—indexing, notebooks, starter kits, Dashboard tests, and deployed inference—preserve these bindings. Index reuse accounts for embedding bindings and indexing settings. Existing patterns retain their MaaS interpretation.
+
+Model identity includes the endpoint binding: the same model ID at different endpoints represents distinct candidates throughout optimization and artifact consumption.
 
 Changing the embedding model or its behavior requires reindexing.
 
