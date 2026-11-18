@@ -8,7 +8,7 @@
 | Authors        | Lukasz Cmielowski |
 | Supersedes     | N/A |
 | Superseded by: | N/A |
-| Tickets        | [RHAISTRAT-1673](https://redhat.atlassian.net/browse/RHAISTRAT-1673) · [RHAISTRAT-2040](https://redhat.atlassian.net/browse/RHAISTRAT-2040) · [RHAISTRAT-2440](https://redhat.atlassian.net/browse/RHAISTRAT-2440) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) |
+| Tickets        | [RHAISTRAT-1673](https://redhat.atlassian.net/browse/RHAISTRAT-1673) · [RHAISTRAT-2040](https://redhat.atlassian.net/browse/RHAISTRAT-2040) · [RHAISTRAT-2440](https://redhat.atlassian.net/browse/RHAISTRAT-2440) · [RHAISTRAT-2623](https://redhat.atlassian.net/browse/RHAISTRAT-2623) · [RHOAIENG-79225](https://redhat.atlassian.net/browse/RHOAIENG-79225) · [RHOAIENG-88692](https://redhat.atlassian.net/browse/RHOAIENG-88692) · [RHAIRFE-3660](https://redhat.atlassian.net/browse/RHAIRFE-3660) |
 | Other docs:    | [ODH-ADR-0001-autorag](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md) |
 
 ## What

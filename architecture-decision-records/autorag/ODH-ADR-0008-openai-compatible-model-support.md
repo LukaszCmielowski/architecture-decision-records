@@ -68,7 +68,7 @@ Use selected bindings for all model calls. Preserve [ODH-ADR-0005](./ODH-ADR-000
 
 Runs and winning patterns record selected model IDs, binding type (`maas` or `openai`), endpoints, and Secret names. Consumers defined in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md)—indexing, notebooks, starter kits, Dashboard tests, and deployed inference—preserve these bindings. Index reuse accounts for embedding bindings and indexing settings. Existing patterns retain their MaaS interpretation.
 
-Map Secrets to authorized Connections when deploying into another namespace. Model-ID or endpoint changes require rebinding and revalidation; changed embedding behavior requires reindexing. Credential rotation preserves model identity.
+Changing the embedding model or its behavior requires reindexing.
 
 ## Alternatives
 
@@ -77,7 +77,7 @@ Map Secrets to authorized Connections when deploying into another namespace. Mod
 | Model Secret lists (selected) | Reusable, explicit bindings; no extra configuration resource. | Requires a defined Secret format and scoped runtime Secret reads. |
 | ConfigMap containing model bindings | Named, reusable configuration; GitOps support; flexible endpoint and credential references. | Adds lookup RBAC, schema compatibility, ownership, snapshots, retention, and cleanup. Dashboard creation per run/edit can accumulate ConfigMaps; shared edits affect later runs. |
 | Dictionary of model IDs, URLs, and Secret name/key references | Flexible per-model bindings; reuses arbitrary credential formats and shared endpoint credentials; recorded with the run. | More fields and validation than self-contained Secrets; reuse needs saved configuration. |
-| [Custom AI Asset endpoints](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml) | Reuses Dashboard registration, discovery, and credential references. | Depends on AI Assets schema and resource lifecycle; Secret name/key mappings need adaptation into pipeline bindings. |
+| [Custom AI Asset endpoints](https://github.com/opendatahub-io/odh-dashboard/blob/main/packages/gen-ai/bff/internal/integrations/kubernetes/k8smocks/testdata/custom_endpoint_models.yaml) | Reuses Dashboard registration, discovery, and credential references. | Tech Preview with an unclear GA path. Depends on AI Assets schema and resource lifecycle; Secret name/key mappings need adaptation into pipeline bindings. |
 | One embedding and one generation Secret | Simple fixed pair; supports KFP Secret environment injection. | Limits independently authenticated candidates to one per role. |
 | Require every model behind one MaaS Connection | One shared connection without duplicated credential values. | Requires direct and independently authenticated endpoints to be exposed through MaaS first. |
 
