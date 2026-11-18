@@ -90,8 +90,8 @@ The default is `custom:overall_score`, which aggregates Unitxt metrics in `speed
 
 Ragas uses the selected evaluator models' MaaS or OpenAI-compatible bindings, including their endpoint and credential references ([ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md)). MaaS is optional when those models use direct endpoints.
 
-* Evaluating LLM: first generation candidate in ADR 8's combined ordering, fixed across trials.
-* Embeddings (`answer_relevancy`): first embedding candidate in that ordering, fixed across trials.
+* Evaluating LLM: first search-space generation model, fixed across trials.
+* Embeddings (`answer_relevancy`): first search-space embedding model, fixed across trials.
 * `model_id` on Ragas `metrics[]` entries records those models when emitted.
 * Ragas costs apply only to `balanced` and scale with benchmark rows × patterns × four Ragas metrics (plus embedding calls for `answer_relevancy`).
 * Failed or slow samples yield a `null` score; they do not fail the whole pattern.

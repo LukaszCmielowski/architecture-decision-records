@@ -76,7 +76,7 @@ Public surface of [`pipeline.py`](https://github.com/opendatahub-io/pipelines-co
 | `optimization_max_rag_patterns` | `int` | `5` | Max patterns to evaluate and retain (`max_number_of_rag_patterns`) |
 | `preset` | `str` | `speed` | Quality tier — maps to Docling extraction, chunking search space, contextual enrichment, and inference concurrency ([Presets](#presets)) |
 
-Model candidate resolution follows [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md): MaaS-only, direct OpenAI-compatible-only, and mixed runs are supported, with at least one candidate per role across both sources.
+Model binding contracts follow [ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md). Runs require embedding and generation candidates.
 
 `db_secret_name` is required. Its keys must match the selected template: simple RAG uses a vector backend; Graph RAG uses Neo4j, which provides graph, vector, and full-text storage.
 
@@ -104,7 +104,7 @@ search_space_config:
 ```
 
 * **Defaults:** `{}` uses preset defaults. Supplied dimensions replace their candidate lists; omitted dimensions inherit them. Extraction, enrichment, runtime defaults, and evaluator availability remain preset-controlled.
-* **Fields:** [Chunking](#chunking-methods) and [retrieval](#retrieval-methods) use their documented dimensions. `generation.parameters` supports `temperature` and `max_completion_tokens`, shared across all MaaS and direct-model candidates; per-model settings require separate runs.
+* **Fields:** [Chunking](#chunking-methods) and [retrieval](#retrieval-methods) use their documented dimensions. `generation.parameters` supports `temperature` and `max_completion_tokens`, shared across generation candidates; per-model settings require separate runs.
 * **Validation:** Dimensions are finite, non-empty lists; one value fixes a setting. Before extraction or pre-selection, validate schema, types, bounds, template/backend and model compatibility, and overlap smaller than chunk size. Enforce search-space limits and trial budgets, report field-path errors, and show the effective search-space size.
 * **Snapshot:** Save effective settings, payload version, and digest with the preparation report and MLflow artifacts for downstream reuse. ADR 8 defines model provenance. Preserve compatibility or provide migration for saved inputs and reruns.
 

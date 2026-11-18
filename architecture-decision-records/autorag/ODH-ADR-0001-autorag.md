@@ -114,7 +114,7 @@ The pipeline surface is defined in [ODH-ADR-0002-experiment-settings](./ODH-ADR-
 | Category | Purpose |
 | -------- | ------- |
 | **Data references** | One to ten document locations (object keys or prefixes) in one Connection/bucket, plus benchmark data for evaluation ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#corpus-locations)) |
-| **Platform credentials** | MaaS and/or OpenAI-compatible model Secrets, plus one generic database Connection (`db_secret_name`): vector DB for simple RAG or Neo4j for Graph RAG |
+| **Platform credentials** | MaaS or OpenAI-compatible model Secrets, plus one generic database Connection (`db_secret_name`): vector DB for simple RAG or Neo4j for Graph RAG |
 | **Optimization controls** | Pattern budget, objective metric, quality preset |
 | **Search-space constraints** | Optional allow-lists and bounds on chunking, embedding, retrieval, and generation dimensions |
 
@@ -186,7 +186,7 @@ Specific parameter names, presets, retrieval modes, and metric backends are deta
 
 * **Data Access**: AutoRAG uses RHOAI Connections (Kubernetes Secrets) for secure access to data sources; credential names — not secret values — appear in pipeline parameters
 * **Namespace Isolation**: Connections are namespace-scoped, preventing cross-namespace data access
-* **Platform and database access**: MaaS credentials (`maas_secret_name`) and/or OpenAI-compatible model Secrets ([ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md)) for chat and embeddings; `db_secret_name` selects the vector database for simple RAG or Neo4j for Graph RAG. All are Connections/secrets.
+* **Platform and database access**: MaaS credentials (`maas_secret_name`) or OpenAI-compatible model Secrets ([ODH-ADR-0008](./ODH-ADR-0008-openai-compatible-model-support.md)) for chat and embeddings; `db_secret_name` selects the vector database for simple RAG or Neo4j for Graph RAG. All are Connections/secrets.
 * **Connection authorization**: Submission and deployment use Connections only through the authorization controls of the owning platform.
 * **Artifact Storage**: Results are stored in user-configured pipeline artifact locations with appropriate access controls
 * **Data Privacy**: Documents and test data are processed within the pipeline execution environment; retention follows configured storage policies
