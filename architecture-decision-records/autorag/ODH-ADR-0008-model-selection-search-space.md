@@ -1,4 +1,4 @@
-# Open Data Hub - AutoRAG Model Secrets and Search-Space Configuration
+# Open Data Hub - AutoRAG Model Selection and Search-Space Configuration
 
 |                |            |
 | -------------- | ---------- |
