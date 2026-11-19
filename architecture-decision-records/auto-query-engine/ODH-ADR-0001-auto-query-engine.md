@@ -40,6 +40,41 @@ The structured-query implementation is a separate module with dedicated pipeline
 2. **Pattern Search & Optimization (KFP Trials):** Evaluates candidate Text-to-SQL pipeline configurations across schema-linking, semantic enrichment, few-shot retrieval, prompting, self-correction, and LLM choices against a benchmark dataset.
 3. **Winning Pattern Export:** Persists the top-ranked query engine pattern (schema index, prompt templates, few-shot store, dialect rules, model binding, and DCH connection reference) for downstream inference via notebooks, Llama Stack / MCP tools, or deployed inference services.
 
+```mermaid
+flowchart TB
+    Setup["AutoRAG experiment<br/>Structured data / Text-to-SQL"]
+    Benchmark["Curated or synthetic benchmark"]
+    Models["Model bindings<br/>MaaS or direct OpenAI-compatible endpoints"]
+
+    subgraph Optimization["Optimization — KFP workflow"]
+        Profile["Profile schema and build semantic index"]
+        Trials["Generate and validate candidate SQL"]
+        Evaluate["Execute, compare results, and rank trials"]
+        Profile --> Trials --> Evaluate
+        Evaluate -->|Next candidate| Trials
+    end
+
+    Setup --> Profile
+    Benchmark --> Evaluate
+    Models -.-> Trials
+    Evaluate -->|Metrics and results| MLflow["MLflow experiment tracking"]
+    Evaluate -->|Best candidate| Pattern["Exported structured_query pattern"]
+
+    subgraph Inference["Inference — notebook, MCP tool, or application"]
+        Question["Natural-language question"] --> Query["Reusable query module<br/>Generate and validate SQL"]
+        Query --> Answer["Query results and optional grounded answer"]
+    end
+
+    Pattern --> Query
+    Models -.-> Query
+    Profile <-->|Schema metadata and bounded reads| DCH["DCH<br/>Authenticated Flight SQL interface over TLS"]
+    Evaluate <-->|Validated SQL and results| DCH
+    Query <-->|Validated SQL and results| DCH
+    DCH <-->|Read-only database credentials| Sources["Structured data sources"]
+```
+
+Optimization runs use the authorized run identity; inference uses the runtime caller's DCH authorization context. Database credentials remain behind DCH. The exported pattern supports inference independently of the KFP optimization workflow.
+
 ### Pipeline Inputs
 
 | Parameter | Type | Requirement | Description |
