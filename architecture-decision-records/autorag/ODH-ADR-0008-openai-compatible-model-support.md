@@ -27,6 +27,8 @@ Model provisioning, subscription or credential management, changes to other expe
 
 ### Pipeline inputs
 
+A run selects either MaaS or direct OpenAI-compatible model bindings.
+
 The pipeline parameter surface is defined in [ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#pipeline-parameters). Direct OpenAI-compatible access requires both Secret names, referencing resources in the run's namespace. Each Secret identifies one model supporting its assigned operation, fixed throughout the run.
 
 **Use MaaS for multiple embedding or generation model candidates in one experiment's search space**, through `maas_secret_name`, `embedding_models`, and `generation_models`.
@@ -39,6 +41,8 @@ generation_model_secret_name: vllm-chat-connection
 ```
 
 ### OpenAI-compatible model Secrets
+
+Pipeline execution consumes the documented Secret schema independently of Dashboard-specific metadata. RHOAI Connections provide a form-based way to create and select these Secrets.
 
 Each referenced Secret supplies one OpenAI-compatible model binding:
 
@@ -85,6 +89,8 @@ Changing the embedding model or its behavior requires reindexing.
 | Require every model behind one MaaS Connection | One shared connection without duplicated credential values. | Requires direct and independently authenticated endpoints to be exposed through MaaS first. |
 
 ## Security and Privacy Considerations
+
+Model clients verify TLS certificates using the trusted CA configuration available to pipeline components.
 
 Authorize the submitting user and run identity for only the referenced Secrets, independently of the Dashboard session. Keep credential values in Secrets and authorized runtime components, excluding parameters, snapshots, logs, and errors. Reject credentials embedded in URLs. Protect recorded bindings with project access controls and apply platform egress policies.
 
