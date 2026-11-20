@@ -27,7 +27,7 @@ AutoMM is appropriate because it accepts image-only data as well as image, text,
 
 ## Decision
 
-Provide a **new, independently versioned `autogluon_multimodal_training_pipeline`**. It has its own public pipeline contract, KFP components, GPU resource profile, artifacts, and serving integration. It is a branching pipeline: a common multimodal lifecycle selects a task-family branch, and each branch owns its validation, training configuration, metrics, artifacts, and inference schema. Do not add an `image` task type, image parameters, or an AutoMM execution mode to `autogluon_tabular_training_pipeline`; the existing tabular and time-series pipelines remain unchanged.
+Provide a **new, independently versioned `autogluon_multimodal_training_pipeline`**. It has its own public pipeline contract, KFP components, GPU resource profile, artifacts, and serving integration. It is a branching pipeline: a common multimodal lifecycle selects a task-family branch, and each branch owns its validation, training configuration, metrics, artifacts, and inference schema.
 
 The initial public product contract is the `image_prediction` branch:
 
@@ -40,7 +40,7 @@ The initial public product contract is the `image_prediction` branch:
 | Training data | A CSV or Parquet manifest plus image objects in S3-compatible storage |
 | Compute | GPU required for the supported production profile; CPU execution may be used only for development and compatibility testing |
 | Output | One saved `MultiModalPredictor` per completed backbone in the curated sweep, a run-level leaderboard, evaluation/diagnostic artifacts, and notebooks |
-| Serving | A dedicated AutoMM ServingRuntime and image-aware v1/v2 request adapter; it is not the existing tabular AutoGluon runtime until proven compatible |
+| Serving | Extend the existing KServe AutoGluon ServingRuntime to load `MultiModalPredictor` and handle image-aware v1/v2 requests |
 
 The pipeline owns the curated backbone sweep and leaderboard. Each leaderboard row represents an independently trained, saved predictor that the user can register and deploy.
 
@@ -69,7 +69,7 @@ The pipeline owns the curated backbone sweep and leaderboard. Each leaderboard r
 
 ### Data contract and ingestion
 
-The pipeline accepts a **manifest**, not an image archive. The manifest is CSV or Parquet and has one row per training example. It must include a label column and exactly one declared image column. Image column values are relative object keys below `image_prefix`, never arbitrary local paths or URLs. The loader retrieves the manifest and required objects with the supplied namespace-scoped RHOAI Connection, materializes them into an ephemeral working volume, and rewrites image values to local paths before calling AutoMM.
+The pipeline accepts a **manifest**, not an image archive. The manifest is CSV or Parquet and has one row per training example, with one image per row. It must include a label column and exactly one declared image column. Image column values are relative object keys below `image_prefix`, never arbitrary local paths or URLs. The pipeline retrieves the manifest and image objects through the supplied namespace-scoped RHOAI Connection.
 
 Example manifest:
 
@@ -79,11 +79,9 @@ images/0001.jpg,Blue running shoe,310,shoe
 images/0002.jpg,Canvas tote bag,460,bag
 ```
 
-The loader must reject traversal (`..`), absolute paths, unsupported/missing objects, unreadable or corrupt images, duplicate row identifiers, an empty label, and an insufficient per-class sample count. It records counts for invalid and dropped rows; the default product policy is **fail before training if any requested training image cannot be read**. A future explicit `invalid_image_policy=drop` may be added only with a visible data-quality report and a defined threshold.
+Validate the manifest and image references for safe access and suitability for training. Report data-quality failures before training; unreadable training images fail the run.
 
 Duplicate images must remain within one split, including identical content stored under different object keys. Overlap with external test data is rejected and reported.
-
-The initial contract intentionally supports one image per row. AutoMM can consume multiple images represented in a cell, but multiple-image ordering, missing-image behavior, request size, and serving schema need a dedicated design rather than an accidental semicolon convention.
 
 ### Public pipeline parameters
 
@@ -115,7 +113,7 @@ Only the manifest reference goes through pipeline parameters. Credentials remain
 ```mermaid
 flowchart LR
     A[S3 manifest + image objects] --> B[Validate manifest and images]
-    B --> C[Stage data to ephemeral volume]
+    B --> C[Stage data]
     C --> D[Create fixed training, tuning, and selection splits]
     D --> E[Curated backbone sweep]
     E --> F[GPU: MultiModalPredictor.fit per backbone]
@@ -124,7 +122,7 @@ flowchart LR
     H --> T[Optional external test reporting]
     T --> I[Per-backbone predictor artifacts]
     I -. post-pipeline .-> J[Model Registry]
-    J --> K[AutoMM ServingRuntime on KServe]
+    J --> K[KServe AutoGluon ServingRuntime with multimodal support]
 ```
 
 Staged images and dataset splits remain available to downstream training and evaluation components through KFP-managed artifacts or shared run-scoped storage.
@@ -141,7 +139,7 @@ The pipeline owns a **curated sweep**:
 4. Write a run-level leaderboard ranked by `eval_metric`. Record the ranking metric, its optimization direction, and any score transformation. Each row names the backbone id, selection scores, fit duration, and the path to that predictor directory; final test scores are reported separately.
 5. Package every completed predictor as a registerable artifact. The user selects a leaderboard row to register.
 
-Fits run **sequentially on one GPU** in the initial release so a `balanced` sweep does not require N accelerators. A later revision may parallelize independent fits after quota and node-pool behavior are proven. A failed backbone must not discard siblings that already completed; the leaderboard records the failure and ranks the successful predictors.
+Fits run **sequentially on one GPU** in the initial release. A failed backbone must not discard siblings that already completed; the leaderboard records the failure and ranks the successful predictors.
 
 ### Quality tiers, resources, and provenance
 
@@ -154,7 +152,7 @@ Fits run **sequentially on one GPU** in the initial release so a `balanced` swee
 
 Before GA, benchmarking must establish input-size limits, minimum dataset/class sizes, batch-size defaults, median/p95 training time, GPU memory peak, final artifact size, cold-start time, and accuracy baselines for representative image-only and image-plus-tabular datasets. The implementation must make CUDA/PyTorch, AutoGluon, Python, backbone, model revision/checksum, image transforms, seed, manifest checksum, and resource profile part of `model.json` and MLflow tags.
 
-Pretrained weights are a supply-chain dependency. The supported training image must either contain approved weights or retrieve them through an approved egress/cache path. The exact strategy, licenses, attribution, checksums, and offline behavior are a release gate; no unbounded download from a user-selected model repository is allowed.
+All model dependencies must be packaged or available through an approved cache for offline/restricted-egress operation, including text checkpoints and tokenizers when text features are enabled. Supply-chain approval is covered under Security and Privacy Considerations.
 
 ### Artifacts, evaluation, and MLflow
 
@@ -178,9 +176,9 @@ The existing [MLflow integration](./ODH-ADR-0004-mlflow-integration.md) remains 
 
 ### Serving and request contract
 
-The current tabular AutoGluon ServingRuntime must be compatibility-tested, but is **not** assumed to load `MultiModalPredictor`. The implementation creates or certifies a dedicated AutoMM ServingRuntime with the same pinned AutoGluon/Python/PyTorch/CUDA ABI as training. Its startup readiness check must load the predictor and execute a small local smoke prediction before accepting traffic.
+Extend the existing KServe AutoGluon ServingRuntime to load `MultiModalPredictor` artifacts and support image-aware v1/v2 requests, while preserving existing tabular and time-series serving behavior. The runtime must verify predictor readiness before accepting traffic.
 
-For the initial remote API, clients submit image **bytes encoded as base64** (or a KServe v2 `BYTES` tensor) together with scalar companion features. They do not send local paths, S3 URIs, Connection names, or credentials. The adapter decodes each image under strict request-size, media-type, pixel-count, batch-size, and timeout limits; constructs the DataFrame expected by AutoMM; and returns predictions and, when enabled, probabilities. A representative v1 request is:
+For the initial remote API, clients submit image **bytes encoded as base64** (or a KServe v2 `BYTES` tensor) together with scalar companion features. They do not send local paths, S3 URIs, Connection names, or credentials. Serving validates requests against size, media-type, pixel-count, batch-size, and timeout limits, and returns predictions and, when enabled, probabilities. A representative v1 request is:
 
 ```json
 {
@@ -203,12 +201,12 @@ GPU inference is the supported default. A CPU-serving variant is permitted only 
 Required gates:
 
 * Reproducible train → register → deploy → infer tests on the supported OpenShift AI release and GPU profile.
-* Offline/restricted-egress test proves every model dependency is packaged or served from an approved cache, including text checkpoints and tokenizers when text features are enabled.
+* Offline/restricted-egress validation covers all supported feature types.
 * Dataset and serving contract negative tests cover corrupt/oversized images, traversal, missing objects, malformed base64, unsupported media, and secret leakage.
-* Load compatibility test uses the exact packaged predictor in a fresh serving pod; rollback preserves the previous runtime/image.
+* Packaged predictors pass training/serving compatibility, readiness, and rollback tests on the pinned stack.
 * Benchmark evidence supports the declared resource tiers, quotas, timeout defaults, and cost/user guidance.
 * Model-quality report includes holdout metrics, class imbalance behavior, data leakage checks, and per-class results for classification.
-* Image license, training-data privacy, model-weight license, CVE/SBOM, and supply-chain review are approved.
+* Security, privacy, and licensing reviews are approved.
 
 ## Alternatives
 
@@ -222,7 +220,7 @@ Required gates:
 
 ### 3. Support object detection first
 
-**Rejected for the first release.** Detection needs bounding-box annotations and COCO/VOC conversion, detection-specific metrics (for example mAP), optional MMDetection dependencies, different visualization artifacts, and a detection response schema. It should follow once the image classification lifecycle is proven.
+**Rejected for the first release.** Detection requires different annotations, evaluation, and serving contracts.
 
 ### 4. Require users to train custom notebooks and deploy custom runtimes
 
@@ -247,9 +245,9 @@ Required gates:
 | --- | --- |
 | GPU scarcity, cost, or long queue times | Explicit HardwareProfile, quota guidance, tier-specific limits, sequential sweep on one GPU, visible pending status, and feature gating. Document that `balanced` wall-clock time scales with the number of backbones. |
 | GPU out-of-memory or local disk exhaustion | Curated backbones, bounded image resolution/batch size, validated resources, PVC sizing, and benchmark gates. |
-| Training/serving incompatibility | One version-pinned image family, packaged dependencies, fresh-pod load tests, and deployment readiness smoke tests. |
-| Pretrained-weight download or license failure | Approved internal cache or baked weights, checksum/license review, and restricted-egress testing. |
-| Large image payloads degrade serving | Base64/pixel/batch limits, ingress limits, queue/concurrency controls, and documented asynchronous/batch path if later needed. |
+| Training/serving incompatibility | Compatibility and readiness acceptance gates on the supported pinned stack. |
+| Pretrained-weight download or license failure | Offline availability and supply-chain approval gates. |
+| Large image payloads degrade serving | Request limits and platform resource controls. |
 | Weak or biased results on sparse/imbalanced data | Minimum-data guidance, stratified splitting where applicable, per-class reporting, and user-visible data-quality warnings. |
 | AutoMM upstream API/dependency churn | Pin supported release, maintain an integration test matrix, and upgrade deliberately rather than resolving dependencies at run time. |
 
@@ -260,7 +258,7 @@ Required gates:
 | AutoML / pipelines-components | New GPU pipeline, data staging, sequential backbone sweep, leaderboard artifacts, tests, and release maintenance. |
 | RHOAI Dashboard and API | New dataset form, validation, run presentation, predictor-type branching, backbone leaderboard, and image scoring UX. |
 | Data Science Pipelines / platform operators | GPU scheduling, HardwareProfiles, quotas, storage, image lifecycle, and supportability. |
-| Model Registry and serving | AutoMM model metadata and a dedicated/certified ServingRuntime. |
+| Model Registry and serving | AutoMM model metadata and multimodal support in the existing KServe AutoGluon ServingRuntime. |
 | MLflow integration | One child run per completed backbone and larger artifact/provenance handling. |
 | Security, legal, and product | Data/weight licensing, supply-chain review, privacy policy, and support-tier decision. |
 
