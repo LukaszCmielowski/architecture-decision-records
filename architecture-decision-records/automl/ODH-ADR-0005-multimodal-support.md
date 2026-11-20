@@ -76,8 +76,6 @@ images/0002.jpg,Canvas tote bag,460,bag
 
 Validate the manifest and image references for safe access and suitability for training. Report data-quality failures before training; unreadable training images fail the run.
 
-Duplicate images must remain within one split, including identical content stored under different object keys. Overlap with external test data is rejected and reported.
-
 ### Public pipeline parameters
 
 Names are proposed here and become stable only when implemented in `pipelines-components` and reviewed with Dashboard/API consumers.
@@ -118,7 +116,7 @@ flowchart LR
 
 Staged images and dataset splits remain available to downstream training and evaluation components through KFP-managed artifacts or shared run-scoped storage.
 
-Runtime resources follow platform HardwareProfiles. Resource sizing, scheduling settings, transfer behavior, storage configuration, and timeouts are defined in pipeline documentation and validated by benchmarks. Queueing due to unavailable GPUs must be visible to the user.
+Runtime resources follow platform HardwareProfiles. Resource sizing, scheduling settings, transfer behavior, storage configuration, and timeouts are defined in pipeline documentation and validated by benchmarks.
 
 ### Backbone sweep and leaderboard
 
@@ -169,13 +167,13 @@ The existing [MLflow integration](./ODH-ADR-0004-mlflow-integration.md) remains 
 
 Extend the existing KServe AutoGluon ServingRuntime to load `MultiModalPredictor` artifacts and support image-aware v1/v2 requests, while preserving existing tabular and time-series serving behavior. The runtime must verify predictor readiness before accepting traffic.
 
-For the initial remote API, clients submit image **bytes encoded as base64** (or a KServe v2 `BYTES` tensor) together with scalar companion features. They do not send local paths, S3 URIs, Connection names, or credentials. Serving validates requests against size, media-type, pixel-count, batch-size, and timeout limits, and returns predictions and, when enabled, probabilities. A representative v1 request is:
+For the initial remote API, clients submit image **bytes encoded as base64**, using an `image.b64` field in v1 or base64 strings in a `BYTES` input tensor for v2 REST, together with scalar companion features. They do not send local paths, S3 URIs, Connection names, or credentials. Serving validates requests against size, media-type, pixel-count, batch-size, and timeout limits, and returns predictions and, when enabled, probabilities. A representative v1 request is:
 
 ```json
 {
   "instances": [
     {
-      "image": {"base64": "..."},
+      "image": {"b64": "..."},
       "product_title": "Blue running shoe",
       "weight_grams": 310
     }
@@ -185,7 +183,7 @@ For the initial remote API, clients submit image **bytes encoded as base64** (or
 
 `model.json` maps public request fields to training columns (for example, `image` to `image_key`) and defines their types, batch shapes, and image encoding. The generated model schema also specifies required fields, maximum decoded bytes/pixels, model input image size, allowed batch size, output labels/class order, and whether probability output is enabled. KServe v2 tensor names and shapes are generated from this schema. Request bodies, decoded images, and inference paths must not be logged; decoded data is retained only for the request lifetime.
 
-GPU inference is the supported default. A CPU-serving variant is permitted only after its latency, memory, and correctness profile is benchmarked and documented. Model Registry registration and KServe deployment continue to be user/platform actions after training.
+Multimodal predictors may be served on CPU or GPU, independently of the device used for training. Supported serving profiles are validated for compatibility, memory usage, and latency. Model Registry registration and KServe deployment continue to be user/platform actions after training.
 
 ### Acceptance gates
 
@@ -260,6 +258,7 @@ Required gates:
 * [AutoMM image + text + tabular quick start](https://auto.gluon.ai/stable/tutorials/multimodal/multimodal_prediction/beginner_multimodal.html)
 * [AutoGluon `MultiModalPredictor` API](https://auto.gluon.ai/stable/api/autogluon.multimodal.MultiModalPredictor.html)
 * [AutoGluon installation and GPU guidance](https://auto.gluon.ai/stable/install.html)
+* [KServe image inference examples (v1/v2)](https://github.com/kserve/kserve/blob/master/python/custom_model/model.py)
 * [AutoML architecture](./ODH-ADR-0001-automl.md)
 * [AutoML model insights](./ODH-ADR-0003-model-insights.md)
 * [AutoML MLflow integration](./ODH-ADR-0004-mlflow-integration.md)
