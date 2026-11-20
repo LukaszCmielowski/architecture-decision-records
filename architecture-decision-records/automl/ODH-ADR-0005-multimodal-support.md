@@ -13,9 +13,9 @@
 
 ## What
 
-Extend OpenShift AI AutoML with a generic **AutoGluon MultiModal (AutoMM) training path**, alongside—not inside—the existing tabular and time-series pipelines. The first implemented branch is image prediction.
+Extend OpenShift AI AutoML with a generic **AutoGluon MultiModal (AutoMM) training path**, initially supporting image prediction.
 
-The first supported workload is supervised image classification and regression, with an optional mix of image, numeric, categorical, and text feature columns. It uses AutoGluon's `MultiModalPredictor`, which fine-tunes a pretrained vision model and, for mixed data, fuses the representations from the available modalities. This ADR deliberately does not commit the initial release to object detection, segmentation, semantic matching, zero-shot, document, audio, or arbitrary multimodal tasks.
+The first supported workload is supervised image classification and regression, with an optional mix of image, numeric, categorical, and text feature columns. It uses AutoGluon's `MultiModalPredictor`, which fine-tunes a pretrained vision model and, for mixed data, fuses the representations from the available modalities.
 
 This decision changes the non-goal for non-tabular data in [ODH-ADR-0001](./ODH-ADR-0001-automl.md): images are in scope only through the new, bounded AutoMM pipeline contract defined here. The existing tabular and time-series contracts remain unchanged.
 
@@ -46,14 +46,9 @@ The pipeline owns the curated backbone sweep and leaderboard. Each leaderboard r
 
 ## Goals
 
-* Establish a generic multimodal pipeline foundation that can gain task-family branches without changing tabular or time-series contracts.
-* Give Dashboard and API users one clear image-first AutoML path that can also exploit accompanying tabular and text columns.
-* Keep existing tabular and time-series API, artifacts, presets, and runtime behavior stable.
-* Support reproducible GPU training and inference through pinned, tested container images.
-* Define an S3 data contract that is secure, portable, and workable for large image collections.
-* Emit one or more deployable predictors from a curated backbone sweep, a run-level leaderboard of those saved predictors, and an explicit inference schema; do not require scoring clients to expose S3 credentials or paths.
-* Preserve the existing KFP, RHOAI Connection, MLflow, Model Registry, and KServe integration boundaries.
-* Establish measurable promotion gates before this becomes a supported product path.
+* Provide a supported Dashboard and API workflow from dataset to deployable predictor.
+* Support secure data access and reproducible training and inference.
+* Reuse existing platform integrations and establish measurable acceptance gates.
 
 ## Non-Goals
 
@@ -69,7 +64,7 @@ The pipeline owns the curated backbone sweep and leaderboard. Each leaderboard r
 
 ### Data contract and ingestion
 
-The pipeline accepts a **manifest**, not an image archive. The manifest is CSV or Parquet and has one row per training example, with one image per row. It must include a label column and exactly one declared image column. Image column values are relative object keys below `image_prefix`, never arbitrary local paths or URLs. The pipeline retrieves the manifest and image objects through the supplied namespace-scoped RHOAI Connection.
+The pipeline accepts a **manifest**, not an image archive. The manifest is CSV or Parquet and has one row per training example, with one image per row. It must include a label column and exactly one declared image column. Image column values are object paths relative to the manifest's directory in its S3 bucket, never arbitrary local paths or URLs. For example, `images/0001.jpg` in `datasets/products/train.csv` resolves to `datasets/products/images/0001.jpg`. The pipeline retrieves the manifest and image objects through the supplied namespace-scoped RHOAI Connection.
 
 Example manifest:
 
@@ -90,21 +85,17 @@ Names are proposed here and become stable only when implemented in `pipelines-co
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `train_data_secret_name` | `str` | Yes | S3-compatible Connection Secret, using the existing AutoML credential-key convention. |
-| `train_data_bucket_name` | `str` | Yes | Bucket containing the manifest and image prefix. |
+| `train_data_bucket_name` | `str` | Yes | Bucket containing the manifest and image objects. |
 | `train_data_file_key` | `str` | Yes | Object key of the CSV or Parquet manifest. |
 | `task_family` | `str` | Yes | Selects the multimodal branch. Initial and only supported value is `image_prediction`; future values require their own validated contract. |
-| `image_prefix` | `str` | Yes | Object-key prefix used to resolve relative values in image columns. |
 | `label_column` | `str` | Yes | Target column. It is not a scoring input. |
-| `image_columns` | `List[str]` | Yes | Manifest columns containing relative image keys. The pipeline requires exactly one. |
+| `image_columns` | `List[str]` | Yes | Manifest column containing image paths relative to that manifest's directory. The pipeline requires exactly one. |
 | `feature_columns` | `Optional[List[str]]` | No | Training-feature allowlist for excluding ID/metadata columns. Must include the image column and exclude the label. When omitted, all non-label manifest columns are features. |
 | `task_type` | `str` | Yes | `binary`, `multiclass`, or `regression`. |
 | `test_data_bucket_name` / `test_data_file_key` | `Optional[str]` | No | Paired external test manifest for final reporting only, using the same connection and schema. |
-| `validation_fraction` | `float` | No | Backbone-selection holdout fraction from the training manifest, independent of external test data; stratified for classification when possible. |
 | `preset` | `str` | No | Product-level GPU quality tier; see below. |
 | `eval_metric` | `Optional[str]` | No | AutoMM metric valid for `task_type`; default resolves to AutoMM's problem-type default. |
 | `time_limit_seconds` | `int` | No | Per-backbone AutoMM `fit` time budget, excluding download, staging, and upload. Sequential sweep wall-clock time scales with the number of backbones. |
-| `random_seed` | `int` | No | Controls split and training seed to the extent supported by the pinned stack. |
-| `model_family` | `str` | No | Pin the run to a single curated backbone. When omitted, `preset` selects the sweep set. No arbitrary TIMM/Hugging Face identifier in the initial API. |
 
 Only the manifest reference goes through pipeline parameters. Credentials remain in the Secret, and image bytes never appear in KFP parameters, KFP metadata, MLflow parameters, logs, or notebook output.
 
@@ -133,8 +124,8 @@ Runtime resources follow platform HardwareProfiles. Resource sizing, scheduling 
 
 The pipeline owns a **curated sweep**:
 
-1. Stage and split the dataset once. All backbones use identical training, tuning, and selection splits. Optional external test data is reserved for final reporting and does not influence fitting or backbone ranking.
-2. Resolve the backbone list from `preset`, or the single identity in `model_family` when set. The list is a small, license-reviewed TIMM set shipped with the training image. Users cannot pass an arbitrary checkpoint name.
+1. Stage and split the dataset once using an internal split policy, stratified for classification when possible. All backbones use identical training, tuning, and selection splits. Optional external test data is reserved for final reporting and does not influence fitting or backbone ranking.
+2. Resolve the curated backbone list from `preset`. The list is a small, license-reviewed TIMM set shipped with the training image.
 3. Train each backbone with the same label, task, metric, seed, and per-fit `time_limit_seconds`, save the predictor, and evaluate it on the selection split, which is excluded from fitting and tuning.
 4. Write a run-level leaderboard ranked by `eval_metric`. Record the ranking metric, its optimization direction, and any score transformation. Each row names the backbone id, selection scores, fit duration, and the path to that predictor directory; final test scores are reported separately.
 5. Package every completed predictor as a registerable artifact. The user selects a leaderboard row to register.
@@ -150,7 +141,7 @@ Fits run **sequentially on one GPU** in the initial release. A failed backbone m
 | `speed` | Fast feedback | One curated TIMM backbone |
 | `balanced` | Compare a short curated set | Multiple license-reviewed TIMM backbones trained sequentially |
 
-Before GA, benchmarking must establish input-size limits, minimum dataset/class sizes, batch-size defaults, median/p95 training time, GPU memory peak, final artifact size, cold-start time, and accuracy baselines for representative image-only and image-plus-tabular datasets. The implementation must make CUDA/PyTorch, AutoGluon, Python, backbone, model revision/checksum, image transforms, seed, manifest checksum, and resource profile part of `model.json` and MLflow tags.
+Before GA, supported limits and defaults must be backed by benchmarks on representative datasets. Artifacts and MLflow must record sufficient data, model, configuration, and runtime provenance to reproduce a run. Detailed benchmark measures and metadata fields belong in pipeline documentation and the shared artifact contract.
 
 All model dependencies must be packaged or available through an approved cache for offline/restricted-egress operation, including text checkpoints and tokenizers when text features are enabled. Supply-chain approval is covered under Security and Privacy Considerations.
 
