@@ -13,7 +13,7 @@
 
 ## Decision
 
-Provide a dedicated KFP pipeline to evaluate and optimize deployed applications through a provider-neutral Responses API contract, `responses.v1`. Every run needs a named supported configuration and an effective request schema. AutoRAG supplies the standard wire schema. The endpoint owner adds any provider constraints or extensions. A request can use one or more tools, including web search, MCP, and custom tools, or run without tools. The endpoint returns a completed text answer in a single synchronous call.
+Provide a dedicated KFP pipeline to evaluate and optimize deployed applications through a provider-neutral Responses API contract, `responses.v1`. Every run supplies one configuration and validates requests against an effective schema. AutoRAG supplies the standard wire schema. The endpoint owner adds any provider constraints or extensions. A request can use one or more tools, including web search, MCP, and custom tools, or run without tools. The endpoint returns a completed text answer in a single synchronous call.
 
 AutoRAG owns request validation, experiment orchestration, evaluation, ranking, artifacts, and MLflow tracking. The endpoint owns tool execution, retrieval and generation, any existing index, and the semantics of every advertised control. A customer-managed proxy can implement the same contract for an existing service.
 
@@ -30,20 +30,21 @@ The first version supports independent benchmark questions and a single final te
 | Pipeline input | Role |
 | --- | --- |
 | `custom_rag_secret_name` | Authorized RHOAI Connection to the endpoint or customer proxy. Supplies the URI and credentials. |
-| `custom_rag_config` | Endpoint contract, selected supported configuration, and optional document identity mapping. |
-| `search_space_config` | Optional finite candidate choices for the selected configuration. |
+| `custom_rag_config` | One endpoint configuration, with its base request, schema additions, and evidence rules. |
+| `search_space_config` | Optional finite candidate choices for that base request. |
 | `test_data_secret_name`, `test_data_bucket_name`, `test_data_key` | Benchmark access and location. See [ADR 0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json). |
 | `optimization_metric`, `optimization_max_rag_patterns` | Evaluation objective and candidate budget. Evaluator model bindings and Connections are supplied separately. See [ADR 0005](./ODH-ADR-0005-rag-pattern-evaluation.md). |
 
 ### Required endpoint contract
 
-The endpoint owner supplies `custom_rag_config.contract` and the user selects one entry with `custom_rag_config.configuration`. Keep the selected configuration for the entire experiment so its data sources and access scope stay comparable.
+`custom_rag_config` directly describes one mode. An endpoint owner can publish multiple templates for the same endpoint as separate ConfigMaps, GitOps files, or KFP presets. Each run supplies one template and can reuse the same Connection. The base request defines the mode, data sources, and access scope for the experiment.
 
 | Field | Requirement |
 | --- | --- |
-| `supported_configurations` | Required non-empty map. Each entry supplies a complete base `request` and optional `evidence` rules. |
+| `request` | Required complete base payload for the mode. |
 | `request_schema` | Optional endpoint-specific constraints on standard fields and the schema for `rag_options` if used. |
 | `tool_schemas` | Optional closed schemas keyed by tool type for provider-defined tool types absent from the built-in schema. Each requires a `type` constant matching its key. |
+| `evidence`, `document_keys` | Optional rules for extracting retrieved passages and mapping local document IDs to canonical benchmark keys. |
 | `api_version`, `name` | Optional wire profile and display name. The profile defaults to `responses.v1`. AutoRAG derives the contract digest. |
 
 AutoRAG ships an immutable wire schema for `responses.v1`, including standard fields and tool definitions keyed by type. The effective schema combines the built-in schema, declared additional tool types, and endpoint constraints. Constraints can narrow standard fields. `rag_options` is the top-level opt-in extension for proprietary controls and requires a closed schema when used. Unknown fields and tool types are rejected. The Dashboard and pipeline use the same effective schema, including for fixed runs. The endpoint remains responsible for honoring its supported settings and rejecting unsupported combinations.
@@ -54,7 +55,7 @@ The Connection controls the endpoint URI and authentication. The endpoint owns c
 
 ### Fixed settings and candidate selection
 
-Search entries use JSON Pointers to existing scalar values in the selected base request, such as `/temperature` or `/tools/0/max_num_results`. The Dashboard offers eligible fields from the base request and validates choices against the effective schema. A schema `const` or single-value `enum` can freeze an endpoint-specific value.
+Search entries use JSON Pointers relative to `request`, such as `/temperature` or `/tools/0/max_num_results`. They target existing scalar values. The Dashboard offers eligible fields from the base request and validates choices against the effective schema. A schema `const` or single-value `enum` can freeze an endpoint-specific value.
 
 * `remote_request` maps pointers to finite, non-empty lists of values for independent choices. Expand the Cartesian product in lexicographic pointer order, with earlier pointers as outer dimensions and values in supplied order.
 * `remote_request_sets` lists explicit override maps for dependent choices. Read them in supplied order. Each map is one candidate.
@@ -70,7 +71,7 @@ AutoRAG rejects pointers into fixed fields and their descendants, and rejects ob
 
 ### Evidence and metric eligibility
 
-The selected configuration may declare how to read evidence from completed Responses output items. Each rule selects an `output_type` from `output[]` and uses a literal JSON Pointer, `results_path`, relative to that item to locate an array. `text_path` and `document_id_path` are relative to each result and must resolve to non-empty strings. Multiple rules can support different tool output types, with one rule per type. JSON Pointers address existing values. If a tool returns a singleton object or a JSON-encoded string, the endpoint or customer proxy must expose a parsed array before AutoRAG can extract evidence.
+The configuration may declare how to read evidence from completed Responses output items. Each rule selects an `output_type` from `output[]` and uses a literal JSON Pointer, `results_path`, relative to that item to locate an array. `text_path` and `document_id_path` are relative to each result and must resolve to non-empty strings. Multiple rules can support different tool output types, with one rule per type. JSON Pointers address existing values. If a tool returns a singleton object or a JSON-encoded string, the endpoint or customer proxy must expose a parsed array before AutoRAG can extract evidence.
 
 AutoRAG emits retrieved passages and canonical document identities as `answer_contexts[]` in output-item and result order. The optional `custom_rag_config.document_keys` is a partial map. AutoRAG replaces an ID when it appears in the map and otherwise uses it as a canonical document key. An endpoint may mix mapped local IDs with canonical keys in the same response. The endpoint owner must map every non-canonical local ID and ensure the resulting keys use the benchmark's document namespace. Missing IDs and IDs known to be non-canonical are contract errors. AutoRAG has no complete document catalog, so it can validate the key format but cannot establish that every well-formed key identifies a real document. Retrieved keys may identify relevant or irrelevant documents. Preserve duplicates, step boundaries, and source metadata such as scores or queries when provided. Record `context_source: "retrieval_results"` for this evidence. Concatenated results do not establish a global rank or prove which passages generation used.
 
@@ -95,15 +96,15 @@ Request timeouts, concurrency, and retries are pipeline execution settings. Retr
 
 Each candidate must return a valid response and produce all scores required by `optimization_metric` for every benchmark row. An exhausted timeout, a refusal that leaves no valid answer, invalid evidence, or a missing required evaluator score makes the candidate incomplete. Retain the row failures and completed row scores for diagnosis. Compute the ranking objective over the full benchmark only. Incomplete candidates receive no ranking score and cannot win, even if 95% of their rows succeeded.
 
-Stop immediately on endpoint authentication or authorization errors or a confirmed failure of the contract shared by the selected configuration. A failure attributed to particular request values or benchmark inputs affects that candidate. Continue within budget while eligible candidates remain. If none produces a complete evaluation, surface an unsuccessful run with diagnostics and no winner. A run with at least one complete candidate may rank the complete candidates and reports incomplete candidates separately.
+Stop immediately on endpoint authentication or authorization errors or a confirmed contract failure shared by all candidates. A failure attributed to particular request values or benchmark inputs affects that candidate. Continue within budget while eligible candidates remain. If none produces a complete evaluation, surface an unsuccessful run with diagnostics and no winner. A run with at least one complete candidate may rank the complete candidates and reports incomplete candidates separately.
 
 ## Artifacts and inference
 
 * `template_id: "custom:remote_responses"` and `inference.kind: "remote_responses"` select remote invocation. The optimization pipeline generates no indexing recipe, indexing notebook, deployment `runtime_spec`, or starter kit.
 * `settings.request` records the effective non-secret winning HTTP body without per-question `input`, including any tool configuration and fixed data-source bindings.
-* `inference.remote_spec` records the profile, Connection reference, selected configuration, document mapping, optional display name, and a contract snapshot containing the resolved profile, effective request schema, and named configurations with their evidence rules. Compute `contract_digest` as SHA-256 over the snapshot serialized as canonical JSON. Changes to the schema, base requests, or evidence rules change the digest automatically. The run also retains the effective search space, evaluation rows, and candidate completeness. [JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785.html)
+* `inference.remote_spec` records the Connection reference, optional display name, and a contract snapshot of the resolved profile, effective request schema, base request, evidence rules, and document mapping. Compute `contract_digest` as SHA-256 over the snapshot serialized as canonical JSON. The run also retains the effective search space, evaluation rows, and candidate completeness. [JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785.html)
 * Optimization, generated inference notebooks, and Dashboard testing use the same remote client. Inference supplies a new question, resolves the authorized Connection, and reuses the saved request. The saved configuration supports replay. Endpoint implementation and data may change independently.
-* MLflow uses the parent run and per-pattern child runs from [ADR 0006](./ODH-ADR-0006-mlflow-integration.md). Record the contract digest, selected configuration, non-secret settings, metrics, and artifact references.
+* MLflow uses the parent run and per-pattern child runs from [ADR 0006](./ODH-ADR-0006-mlflow-integration.md). Record the contract digest, optional display name, non-secret settings, metrics, and artifact references.
 
 ## Security and privacy
 
@@ -117,49 +118,30 @@ Benchmark questions and instructions go to the selected endpoint. Endpoint acces
 | Extend the document-indexing pipeline | A dedicated remote pipeline has fewer inputs because the remote endpoint already owns its data and tools. |
 | Execute customer code or tool calls in AutoRAG | Keep tool execution and any protocol translation with the endpoint or its proxy. |
 
-## Example
+## Examples
 
-A single endpoint advertises `warranty_search` for file search with retrieval evidence and `catalog_search` for MCP with proprietary ranking settings. AutoRAG validates standard Responses fields through the built-in schema.
+The file-search and MCP examples are separate templates. Both can use the same endpoint Connection.
+
+### File search with retrieval evidence
+
+This template uses the built-in schema alone. The sweep produces three candidates, including the base request because 10 appears in the list.
 
 ```yaml
 custom_rag_config:
-  contract:
-    name: customer-responses
-    request_schema:
-      properties:
-        model: {enum: [customer-rag, customer-web, customer-catalog]}
-        rag_options:
-          type: object
-          additionalProperties: false
-          required: [hybrid_alpha, reranker_top_k]
-          properties:
-            hybrid_alpha: {type: number, minimum: 0, maximum: 1}
-            reranker_top_k: {type: integer, enum: [10, 20]}
-    supported_configurations:
-      warranty_search:
-        request:
-          model: customer-rag
-          tools:
-            - type: file_search
-              vector_store_ids: [warranty-documents]
-              max_num_results: 10
-          tool_choice: {type: file_search}
-          include: [file_search_call.results]
-        evidence:
-          - output_type: file_search_call
-            results_path: /results
-            text_path: /text
-            document_id_path: /file_id
-      catalog_search:
-        request:
-          model: customer-catalog
-          tools:
-            - type: mcp
-              server_label: catalog
-              server_url: https://retrieval.example.com/mcp
-              require_approval: never
-          rag_options: {hybrid_alpha: 0.5, reranker_top_k: 10}
-  configuration: warranty_search
+  name: warranty_search
+  request:
+    model: customer-rag
+    tools:
+      - type: file_search
+        vector_store_ids: [warranty-documents]
+        max_num_results: 10
+    tool_choice: {type: file_search}
+    include: [file_search_call.results]
+  evidence:
+    - output_type: file_search_call
+      results_path: /results
+      text_path: /text
+      document_id_path: /file_id
   document_keys:
     file-manual: product-manuals/xr-200-manual.pdf
 search_space_config:
@@ -169,11 +151,30 @@ search_space_config:
     /tools/0/max_num_results: [5, 10, 20]
 ```
 
-The `warranty_search` sweep has three candidates. The base request is included because 10 appears in the list.
+### MCP with proprietary ranking settings
 
-To use `catalog_search`, set `custom_rag_config.configuration` to `catalog_search` and replace `search_space_config` with the following. The endpoint or proxy implements `rag_options`. Each set supplies a supported pair, and GAM keeps the values in each pair together. MCP tool settings and destination stay fixed.
+The endpoint or proxy implements `rag_options`. Each override map supplies a supported pair, and GAM keeps the values in each pair together. MCP tool settings and its destination stay fixed. Select an answer-based objective because this template supplies no evidence rules.
 
 ```yaml
+custom_rag_config:
+  name: catalog_search
+  request:
+    model: customer-catalog
+    tools:
+      - type: mcp
+        server_label: catalog
+        server_url: https://retrieval.example.com/mcp
+        require_approval: never
+    rag_options: {hybrid_alpha: 0.5, reranker_top_k: 10}
+  request_schema:
+    properties:
+      rag_options:
+        type: object
+        additionalProperties: false
+        required: [hybrid_alpha, reranker_top_k]
+        properties:
+          hybrid_alpha: {type: number, minimum: 0, maximum: 1}
+          reranker_top_k: {type: integer, enum: [10, 20]}
 search_space_config:
   apiVersion: autorag.opendatahub.io/v1alpha1
   kind: AutoRAGSearchSpace
@@ -183,8 +184,6 @@ search_space_config:
     - /rag_options/hybrid_alpha: 0.7
       /rag_options/reranker_top_k: 20
 ```
-
-Select an answer-based objective for `catalog_search` because it omits evidence rules. A standard-only `web_search` configuration can use the built-in schema alone when the endpoint has no additional constraints.
 
 ## Related
 
