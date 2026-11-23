@@ -11,455 +11,183 @@
 | Tickets        | |
 | Other docs:    | [ODH-ADR-0001](./ODH-ADR-0001-autorag.md) · [ODH-ADR-0003](./ODH-ADR-0003-rag-templates.md) · [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) · [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) · [ODH-ADR-0006](./ODH-ADR-0006-mlflow-integration.md) |
 
-## What
+## Decision
 
-Provide a dedicated KFP pipeline for evaluating and optimizing existing customer-hosted RAG applications through a defined subset of the **Responses API and `file_search` contract**. AutoRAG treats the application as a black box: the endpoint owns retrieval and generation over an already-built index; AutoRAG owns experiment orchestration, evaluation, ranking, artifacts, and MLflow integration.
+Provide a dedicated KFP pipeline to evaluate and optimize deployed applications through a provider-neutral Responses API contract, `responses.v1`. Every run needs a named supported configuration and an effective request schema. AutoRAG supplies the standard wire schema. The endpoint owner adds any provider constraints or extensions. A request can use one or more tools, including web search, MCP, and custom tools, or run without tools. The endpoint returns a completed text answer in a single synchronous call.
 
-The endpoint is provided directly by the RAG service or through a customer-managed compatibility proxy. AutoRAG explores supported standard request fields and optional schema-defined proprietary controls under `rag_options`, retaining the standard response envelope.
+AutoRAG owns request validation, experiment orchestration, evaluation, ranking, artifacts, and MLflow tracking. The endpoint owns tool execution, retrieval and generation, any existing index, and the semantics of every advertised control. A customer-managed proxy can implement the same contract for an existing service.
 
 ## Why
 
-Customers often already run proprietary retrieval, reranking, agents, or generation behind an HTTP API. A standard external contract lets AutoRAG optimize these services without importing customer code or knowing their implementation.
+Customers can tune services they already run without importing their code or preparing a second corpus. The same contract drives the Dashboard, validation, and replay of the winning request. Separating request compatibility from evaluation evidence lets the same pipeline evaluate endpoints with different tools and makes it clear which metrics each configuration can support.
 
-A bounded Responses + `file_search` contract:
+## Scope
 
-* Reuses the inference wire format in [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md).
-* Provides a known parameter vocabulary and result structure for AutoRAG and the Dashboard.
-* Fits RHOAI Connections (`uri` + credentials).
-* Supplies retrieved passages and document identity for Unitxt / Ragas evaluation.
-* Keeps customer dependencies and tool execution outside the AutoRAG image.
+The first version supports independent benchmark questions and a single final text answer per request. Streaming, background jobs, conversation state, client-executed tools, approval or continuation loops, index construction and promotion, arbitrary REST adapters, and customer code execution in AutoRAG are outside scope.
 
-The endpoint may use custom functions or agent flows internally. It must expose the agreed request controls and file-search results externally. Compatibility describes the HTTP contract; it does not require using OpenAI-hosted storage or models.
+## Configuration
 
-## Goals
-
-* Optimize remote RAG request settings through a bounded standard and proprietary search space.
-* Reuse AutoRAG evaluation, leaderboards, pattern artifacts, and MLflow tracking.
-* Reuse the winning configuration for inference through an authorized Connection.
-
-## Non-Goals (v1)
-
-* Full Responses API coverage, streaming, or server-side conversation management.
-* Arbitrary JSON Schemas, executable parameter definitions, or custom response envelopes in AutoRAG.
-* Endpoint-specific request mappings or arbitrary REST adapters configured or executed by AutoRAG. Customer-managed compatibility proxies are allowed.
-* Returning unfinished function calls for AutoRAG to execute and resume.
-* Index construction, updates, or promotion, including chunking and embedding optimization, built-in indexing pipelines, and Files / Vector Stores ingestion APIs.
-* OCI custom template workers, customer Python hooks, or Papermill execution inside optimization.
-* Guaranteeing endpoint availability or answer quality, or supporting customer implementation internals.
-
-## How
-
-### Ownership boundary
-
-| Responsibility | Owner |
+| Pipeline input | Role |
 | --- | --- |
-| Endpoint implementation, retrieval, generation, internal tools, availability, and answer quality | Customer |
-| Compatibility proxy, request/response translation, and authentication to downstream services when a proxy is used | Customer |
-| Connection handling, remote client, GAM, benchmark evaluation, leaderboard, artifacts, and MLflow tracking | AutoRAG |
-| Validation of standard fields, declared parameter types and constraints, and required search results | AutoRAG |
-| Proprietary parameter definitions, semantics, and conforming responses | Customer |
-| Index preparation, correctness, maintenance, and mapping to `file_search.vector_store_ids` | Customer |
-| Connection authorization and network reachability | User / platform |
+| `custom_rag_secret_name` | Authorized RHOAI Connection to the endpoint or customer proxy. Supplies the URI and credentials. |
+| `custom_rag_config` | Endpoint contract, selected supported configuration, and optional document identity mapping. |
+| `search_space_config` | Optional finite candidate choices for the selected configuration. |
+| `test_data_secret_name`, `test_data_bucket_name`, `test_data_key` | Benchmark access and location. See [ADR 0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json). |
+| `optimization_metric`, `optimization_max_rag_patterns` | Evaluation objective and candidate budget. Evaluator model bindings and Connections are supplied separately. See [ADR 0005](./ODH-ADR-0005-rag-pattern-evaluation.md). |
 
-When a proxy is used, the Connection points to the proxy. The customer owns preservation of the selected controls' semantics, actual retrieval results, document identities, and errors across translation. Unsupported controls are rejected clearly; retrieved passages and document identities reflect the underlying service. Proprietary controls use the declared extension contract below.
+### Required endpoint contract
 
-### Configuration and search space
+The endpoint owner supplies `custom_rag_config.contract` and the user selects one entry with `custom_rag_config.configuration`. Keep the selected configuration for the entire experiment so its data sources and access scope stay comparable.
 
-#### Inputs
-
-The dedicated remote pipeline accepts endpoint configuration, search-space candidates, benchmark data, and evaluation settings. It reuses AutoRAG's optimizer, evaluators, artifact contracts, and MLflow integration. Its execution starts with configuration validation and endpoint preflight, followed by candidate evaluation and ranking.
-
-| Parameter | Role |
+| Field | Requirement |
 | --- | --- |
-| `custom_rag_secret_name` | Connection to the endpoint (`uri`, API key / token). |
-| `custom_rag_config` | Non-secret fixed request settings, optional proprietary parameter definitions, and document-id mapping. |
-| `search_space_config` | Finite candidates for standard request fields and proprietary controls, expressed as independent dimensions or complete parameter sets. |
-| `test_data_secret_name` | Connection for benchmark data access. |
-| `test_data_bucket_name` / `test_data_key` | Benchmark location, using the JSON contract in [ADR 0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json). |
-| `optimization_metric` / `optimization_max_rag_patterns` | Evaluator-qualified objective and candidate budget, following the shared AutoRAG settings. |
+| `supported_configurations` | Required non-empty map. Each entry supplies a complete base `request` and optional `evidence` rules. |
+| `request_schema` | Optional endpoint-specific constraints on standard fields and the schema for `rag_options` if used. |
+| `tool_schemas` | Optional closed schemas keyed by tool type for provider-defined tool types absent from the built-in schema. Each requires a `type` constant matching its key. |
+| `api_version`, `name` | Optional wire profile and display name. The profile defaults to `responses.v1`. AutoRAG derives the contract digest. |
 
-The user supplies index ids already queryable by the endpoint. Corpus access, database Connections, and application model bindings belong to the customer application and are not inputs to this pipeline. Document discovery, extraction, model pre-selection, and index construction are absent from the remote workflow; document-pipeline presets do not supply its search space or preparation stages.
+AutoRAG ships an immutable wire schema for `responses.v1`, including standard fields and tool definitions keyed by type. The effective schema combines the built-in schema, declared additional tool types, and endpoint constraints. Constraints can narrow standard fields. `rag_options` is the top-level opt-in extension for proprietary controls and requires a closed schema when used. Unknown fields and tool types are rejected. The Dashboard and pipeline use the same effective schema, including for fixed runs. The endpoint remains responsible for honoring its supported settings and rejecting unsupported combinations.
 
-Evaluator selection follows [ADR 0005](./ODH-ADR-0005-rag-pattern-evaluation.md). Where evaluators require models, their model settings and authorized Connection references are separate inputs from `custom_rag_secret_name`; endpoint credentials authorize access to the RAG application, not to evaluator models.
+Endpoint-supplied schemas use a bounded JSON Schema Draft 2020-12 vocabulary with `type`, `properties`, `required`, `additionalProperties: false`, one `items` schema per array, `enum`, `const`, and numeric, string-length, and array-length bounds. Reject unknown keywords and external references. Standard fields retain their wire names. Schema and configuration metadata stay out of the HTTP body.
 
-#### Fixed settings and candidate selection
+The Connection controls the endpoint URI and authentication. The endpoint owns credentials for its tools and downstream services. Template settings are JSON body fields. If a downstream service requires proprietary headers, the customer proxy adds them. AutoRAG injects `input`, `stream: false`, and `store: false` after validating the endpoint-owned payload. Those fields are reserved, along with conversation, prior-response, and background controls. A configuration may declare fixed `tool_choice` and `include` values appropriate for its provider and tools.
 
-`custom_rag_config.request` supplies fixed request settings. This ADR extends the [ADR 0002 search-space contract](./ODH-ADR-0002-experiment-settings.md#search-space-configuration) with `remote_request` for standard request candidates and either `remote_parameters` or `remote_parameter_sets` for proprietary candidates. Remote runs use these sections rather than built-in chunking, retrieval, or generation dimensions.
+### Fixed settings and candidate selection
 
-Candidate lists are finite and non-empty; one value fixes a setting. Candidate selections replace only the corresponding request fields, preserving other fixed settings. Omitted fields retain their fixed value or the endpoint's documented default.
+Search entries use JSON Pointers to existing scalar values in the selected base request, such as `/temperature` or `/tools/0/max_num_results`. The Dashboard offers eligible fields from the base request and validates choices against the effective schema. A schema `const` or single-value `enum` can freeze an endpoint-specific value.
 
-With `search_space_config: {}`, the pipeline evaluates the fixed request configuration once across the benchmark, without a GAM search or inherited document-pipeline search defaults. Endpoint preflight still applies, and the run produces the same evaluation and pattern artifacts as an optimization run.
+* `remote_request` maps pointers to finite, non-empty lists of values for independent choices. Expand the Cartesian product in lexicographic pointer order, with earlier pointers as outer dimensions and values in supplied order.
+* `remote_request_sets` lists explicit override maps for dependent choices. Read them in supplied order. Each map is one candidate.
+* Accept at most one form. Normalize either form to an ordered sequence of override maps. Apply each map to the base request, retain omitted values, and deduplicate identical resulting requests in first-seen order. Use that sequence for preflight and selection within the candidate budget. Large grids may be expanded lazily.
 
-When `remote_request.tools` is present, it contains exactly one entry with `type: "file_search"`. The discriminator is required and fixed, not a candidate dimension. Candidate values replace matching fields in the fixed request's single tool; they do not replace the tool array or its index binding. Missing or different discriminators and multiple tool entries are configuration errors.
+An empty search space evaluates the base request once. In a sweep, the base request is evaluated only if a supplied combination reproduces it. Both cases use the same preflight and artifacts.
 
-A complete [configuration example](#configuration-example) is included in the appendix.
+AutoRAG rejects pointers into fixed fields and their descendants, and rejects object or array replacements. The built-in profile defines protected paths for each standard tool type. For example, it protects `type`, `server_url`, `require_approval`, `vector_store_ids`, and `filters` wherever they apply under `/tools/<index>/`, as well as top-level `tool_choice` and `include`. Tool count and order, identities, destinations, credentials, approval settings, data-source bindings, and access filters stay fixed. For provider-defined tools and `rag_options`, the owner declares any additional fields that control these boundaries using `const` or single-value `enum` constraints. Endpoint authorization is enforced independently of the schema. AutoRAG validates the base requests and search declarations before preflight, then validates every composed request before submission.
 
-Endpoint URLs and credentials come from the Connection, outside these non-secret settings.
+## Wire contract and evaluation
 
-#### Standard request fields
+`RemoteRAGTemplate` in ai4rag sends `POST {uri}/v1/responses`. A successful call returns HTTP 200, `object: "response"`, `status: "completed"`, and an unambiguous final assistant message with `output_text`. The client joins that message's text blocks into `answer`. Intermediate tool outputs may accompany the final answer. The endpoint must resolve any tool calls needed to answer before returning. AutoRAG does not execute calls or resume runs.
 
-The v1 compatibility profile is named `responses.file_search.v1`. It defines the following allowlist from the [Responses API reference](https://developers.openai.com/api/reference/python/resources/responses/methods/create):
+### Evidence and metric eligibility
 
-| Request field | v1 treatment |
+The selected configuration may declare how to read evidence from completed Responses output items. Each rule selects an `output_type` from `output[]` and uses a literal JSON Pointer, `results_path`, relative to that item to locate an array. `text_path` and `document_id_path` are relative to each result and must resolve to non-empty strings. Multiple rules can support different tool output types, with one rule per type. JSON Pointers address existing values. If a tool returns a singleton object or a JSON-encoded string, the endpoint or customer proxy must expose a parsed array before AutoRAG can extract evidence.
+
+AutoRAG emits retrieved passages and canonical document identities as `answer_contexts[]` in output-item and result order. The optional `custom_rag_config.document_keys` is a partial map. AutoRAG replaces an ID when it appears in the map and otherwise uses it as a canonical document key. An endpoint may mix mapped local IDs with canonical keys in the same response. The endpoint owner must map every non-canonical local ID and ensure the resulting keys use the benchmark's document namespace. Missing IDs and IDs known to be non-canonical are contract errors. AutoRAG has no complete document catalog, so it can validate the key format but cannot establish that every well-formed key identifies a real document. Retrieved keys may identify relevant or irrelevant documents. Preserve duplicates, step boundaries, and source metadata such as scores or queries when provided. Record `context_source: "retrieval_results"` for this evidence. Concatenated results do not establish a global rank or prove which passages generation used.
+
+| Configuration | Eligible objectives |
 | --- | --- |
-| `tools[0].max_num_results` | Required retrieval control; fixed value or finite candidate choices. Limits returned search results, not index construction. |
-| `tools[0].ranking_options.score_threshold` | Optional candidate choices, within the documented range of 0–1. |
-| `tools[0].ranking_options.ranker` | Optional choices among documented ranker identifiers supported by the endpoint. Proprietary strategies use `rag_options`. |
-| `model` | Fixed model id or finite candidate choices supported by the endpoint. |
-| `temperature` or `top_p` | Optional candidate choices where the selected model supports them; vary at most one per experiment. |
-| `max_output_tokens` | Fixed output-token budget or finite candidate choices. |
-| `instructions` | Fixed instructions or an explicit set of candidate instruction strings. |
+| No evidence rules | Objectives that can be computed from the question, answer, and reference answer. Evaluation rows omit `answer_contexts` to indicate unavailable evidence. |
+| Evidence rules declared | Objectives requiring passages or benchmark document identity, provided the benchmark has the required references. A rank-based objective also needs an ordering model the evaluator understands. |
 
-The following fields are fixed controls, not optimization dimensions:
+For a configuration that declares evidence, each response must include at least one matching output item. Every matching item must contain a valid results array. An empty array represents a completed retrieval with no matches. Missing evidence, malformed results, and invalid document IDs are contract errors.
 
-* `tools` contains exactly one tool, with `type: "file_search"`.
-* `tools[0].vector_store_ids` binds the prepared index and remains unchanged across candidates.
-* Optional `tools[0].filters` expresses the experiment's corpus / access constraints and remains unchanged across candidates. Endpoint authorization remains mandatory.
-* AutoRAG supplies `input`, `stream: false`, `store: false`, `tool_choice: {"type": "file_search"}`, and `include: ["file_search_call.results"]`.
-* Each benchmark question is evaluated independently; conversation ids and previous-response state are not used.
+Hosted web search commonly returns URL citations and source lists. If those are the only evidence, the configuration cannot support metrics such as Faithfulness or Context Precision. The endpoint or proxy must expose the actual retrieved passages and their benchmark document identities to enable those metrics. [Web search citations and sources](https://developers.openai.com/api/docs/guides/tools-web-search)
 
-Additional standard Responses fields require an explicit profile revision. Proprietary parameters are accepted only through the optional `rag_options` extension described below.
+AutoRAG computes evaluator scores locally. A composite objective is eligible only if the configuration and benchmark provide the inputs required by all of its constituent metrics. Unavailable usage is recorded as unavailable.
 
-When `instructions` is absent from both the fixed request and search space, AutoRAG omits it and the endpoint retains its default instructions. When supplied, the endpoint honors its Responses API semantics or rejects the control as unsupported.
+### Preflight and failures
 
-#### Proprietary controls
+Validate the contract, search space, and metric eligibility locally. Preflight sends the same representative benchmark question for the first 10 requests in the normalized candidate sequence, or every request if the sequence is shorter. A fixed run probes its base request. Preflight checks endpoint access, final-answer conformance, and declared evidence. The pipeline records which candidates were probed and their results.
 
-The endpoint owner defines request-time controls in `custom_rag_config.parameter_schema`. Each named parameter has a scalar type (`string`, `integer`, `number`, or `boolean`), optional allowed values (`enum`), and numeric bounds where applicable. This is a bounded schema vocabulary; arbitrary schemas, code, and request-mapping expressions are outside the contract. Parameter names identify direct members of `rag_options`, not paths into other request fields.
+Request timeouts, concurrency, and retries are pipeline execution settings. Retry transient failures within the execution budget. A candidate that fails preflight is recorded and excluded. Unprobed candidates remain eligible for evaluation. Preflight calls are separate from benchmark scoring and do not count toward `optimization_max_rag_patterns`.
 
-Each trial sends selected proprietary values in the top-level `rag_options` request object. See the [proprietary configuration example](#proprietary-configuration-example). Fixed proprietary values may be supplied in `custom_rag_config.request.rag_options`; candidate values override them. All supplied values must match the declared schema.
+### Benchmark completeness and ranking
 
-`rag_options` is an AutoRAG extension, not a standard Responses API field. The customer endpoint or proxy explicitly supports it and owns parameter semantics. Definitions are validation metadata, not request fields; they cannot override authentication, index bindings, access constraints, or standard fields. Endpoints using only the standard profile omit `rag_options`.
+Each candidate must return a valid response and produce all scores required by `optimization_metric` for every benchmark row. An exhausted timeout, a refusal that leaves no valid answer, invalid evidence, or a missing required evaluator score makes the candidate incomplete. Retain the row failures and completed row scores for diagnosis. Compute the ranking objective over the full benchmark only. Incomplete candidates receive no ranking score and cannot win, even if 95% of their rows succeeded.
 
-#### Dependent controls
+Stop immediately on endpoint authentication or authorization errors or a confirmed failure of the contract shared by the selected configuration. A failure attributed to particular request values or benchmark inputs affects that candidate. Continue within budget while eligible candidates remain. If none produces a complete evaluation, surface an unsuccessful run with diagnostics and no winner. A run with at least one complete candidate may rank the complete candidates and reports incomplete candidates separately.
 
-`remote_parameters` describes independent dimensions whose values may be combined freely. For dependent controls, `remote_parameter_sets` supplies a finite, non-empty list of complete, valid `rag_options` objects instead. For example, disabling reranking omits `reranking_top_k`:
+## Artifacts and inference
 
-```yaml
-search_space_config:
-  apiVersion: autorag.opendatahub.io/v1alpha1
-  kind: AutoRAGSearchSpace
-  remote_parameter_sets:
-    - reranking_strategy: none
-    - reranking_strategy: cross_encoder
-      reranking_top_k: 10
-    - reranking_strategy: cross_encoder
-      reranking_top_k: 20
-```
+* `template_id: "custom:remote_responses"` and `inference.kind: "remote_responses"` select remote invocation. The optimization pipeline generates no indexing recipe, indexing notebook, deployment `runtime_spec`, or starter kit.
+* `settings.request` records the effective non-secret winning HTTP body without per-question `input`, including any tool configuration and fixed data-source bindings.
+* `inference.remote_spec` records the profile, Connection reference, selected configuration, document mapping, optional display name, and a contract snapshot containing the resolved profile, effective request schema, and named configurations with their evidence rules. Compute `contract_digest` as SHA-256 over the snapshot serialized as canonical JSON. Changes to the schema, base requests, or evidence rules change the digest automatically. The run also retains the effective search space, evaluation rows, and candidate completeness. [JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785.html)
+* Optimization, generated inference notebooks, and Dashboard testing use the same remote client. Inference supplies a new question, resolves the authorized Connection, and reuses the saved request. The saved configuration supports replay. Endpoint implementation and data may change independently.
+* MLflow uses the parent run and per-pattern child runs from [ADR 0006](./ODH-ADR-0006-mlflow-integration.md). Record the contract digest, selected configuration, non-secret settings, metrics, and artifact references.
 
-`remote_parameters` and `remote_parameter_sets` are mutually exclusive. Each parameter set is one indivisible candidate: its values are not recombined with other sets. The selected object replaces the entire request `rag_options`, including any fixed defaults, so omitted members remain absent. Standard `remote_request` dimensions can still vary alongside the chosen set.
+## Security and privacy
 
-The endpoint owner supplies valid combinations. Complete sets express dependencies without conditional schema rules.
-
-#### Validation and persistence
-
-AutoRAG validates the standard profile, declared parameter types and bounds, and known standard-field combinations. The endpoint validates proprietary combinations and honors the selected controls without changing the index. Unsupported names, values, or combinations produce clear errors. Run artifacts retain the effective search space, parameter definitions, and complete parameter sets; the winning request preserves selected values for inference.
-
-### Remote client
-
-ai4rag provides `RemoteRAGTemplate` as the shared client for optimization and inference. It applies the selected request settings and normalizes answers, retrieved contexts, and errors for AutoRAG consumers.
-
-### Wire contract
-
-AutoRAG calls `POST {uri}/v1/responses` using the endpoint URL and authentication from the Connection. Complete [request and response examples](#request-and-response-examples) are included in the appendix.
-
-A successful response has `object: "response"`, `status: "completed"`, completed `file_search_call` output with included results, and a final assistant message containing `output_text`. The endpoint completes retrieval and generation within this call; AutoRAG does not execute function calls returned by the service.
-
-Prefer canonical benchmark document keys directly in each returned `file_id`; a customer-managed proxy can translate endpoint-local ids. `document_keys` supports small explicit mappings from endpoint-local ids to canonical keys, not a full-corpus catalog. It is evaluation metadata and is not sent to the endpoint.
-
-The client concatenates the final assistant message's text blocks to produce `answer`. Included search-result text becomes `answer_contexts[]`. Every result requires a non-empty `file_id` that resolves to a canonical `document_key` in the benchmark's `correct_answer_document_keys` namespace ([ODH-ADR-0002](./ODH-ADR-0002-experiment-settings.md#benchmark-json)). Keys identify full source object paths, not basenames or chunk ids. Filename or attribute fields do not substitute for `file_id`. File citations alone cannot replace retrieved text or document identity ([OpenAI file-search contract](https://developers.openai.com/api/docs/guides/tools-file-search)).
-
-For multiple `file_search_call` items, `answer_contexts[]` concatenates results in `output[]` order and then each call's result order, preserving duplicate passages and their document identities. Evaluation artifacts retain search-call boundaries, queries, scores, and result order, and record `context_source: "retrieval_results"`: results do not prove exactly which passages generation consumed. This concatenation is not a global ranking; rank-based metrics are unavailable unless the evaluator supports the step structure.
-
-A completed search call with `results: []` is a valid no-results outcome. Missing search calls, missing or invalid result data, ambiguous answers, and unsuccessful responses are failures. Failed benchmark responses remain visible; candidates with incomplete evaluation are excluded from normal ranking. AutoRAG computes evaluator scores locally and never treats endpoint-provided scores as Unitxt / Ragas metrics.
-
-After local validation of the entire search configuration, endpoint preflight uses one representative benchmark question and a concrete configuration drawn from the candidate space. It requires HTTP 200, a completed answer, included search results, and resolvable document identities. Preflight checks conformance for that configuration; it does not establish support for every candidate combination. A health or models endpoint alone does not establish conformance. The endpoint returns standard Responses usage and error information where applicable; unavailable usage is not recorded as zero.
-
-### Execution and failures
-
-Request timeouts, concurrency, and retry budgets are AutoRAG execution settings, separate from searchable endpoint parameters. Their defaults are documented with the pipeline.
-
-* Transient transport, rate-limit, and service failures are retryable within the execution budget; exhausted retries leave the evaluation incomplete.
-* Candidate-specific parameter validation errors are not retried. The candidate fails and remains visible, without normal ranking.
-* Authentication, authorization, and shared response-contract failures stop the run with a diagnostic rather than consuming further candidate budget.
-
-### End-to-end flow
-
-```mermaid
-flowchart TB
-  User[User] --> Conn["Connection: URI + credentials"]
-  User --> Config["Request defaults + optional parameter definitions\n+ bounded candidate choices"]
-  User --> Binding["Existing index binding\nfixed vector_store_ids"]
-  Conn --> Validate["Validate configuration\n+ endpoint preflight"]
-  Config --> Validate
-  Binding --> Validate
-  Validate --> GAM[GAM candidate selection]
-  GAM --> Remote[RemoteRAGTemplate]
-  Bench[Benchmark questions] --> Remote
-  Remote -->|"POST /v1/responses\nfile_search + optional rag_options"| Endpoint["Customer RAG endpoint\ndirect service or compatibility proxy"]
-  Endpoint --> Rows["Answer + search results"]
-  Rows --> Eval[Unitxt / Ragas]
-  Eval --> Leaderboard[Leaderboard]
-  Leaderboard --> Pattern["pattern.json\nwinning request + index binding"]
-  Pattern --> Inference["Inference notebook / Dashboard\nsame remote client"]
-  Inference --> Endpoint
-```
-
-### User experience
-
-1. Deploy or select a conforming RAG service, or place a customer-managed compatibility proxy in front of an existing service. Create a Connection to the conforming endpoint.
-2. Supply the ids of an existing index queryable by the service.
-3. In the AutoRAG wizard, choose **Custom (Responses + file_search)** to use the dedicated remote pipeline, select the Connection, and configure fixed values and candidate choices for standard fields and any declared proprietary parameters. Supply document-id mapping if needed.
-4. Choose the benchmark, objective, and budget. Validate the configuration and endpoint before starting GAM.
-5. Inspect the leaderboard and retrieved contexts, then promote the winning request configuration for remote inference.
-
-The wizard uses AutoRAG's standard field definitions and the endpoint owner's declared parameter types and constraints.
-
-### Artifacts and MLflow
-
-Custom patterns extend [ODH-ADR-0004](./ODH-ADR-0004-rag-pattern-inference.md) with a remote inference variant. Evaluation and MLflow retain [ODH-ADR-0005](./ODH-ADR-0005-rag-pattern-evaluation.md) / [ODH-ADR-0006](./ODH-ADR-0006-mlflow-integration.md).
-
-* `template_id: "custom:remote_responses"` and `inference.kind: "remote_responses"` select remote invocation. No built-in deployment `runtime_spec` is generated.
-* `settings.request` records the complete effective non-secret winning request, excluding the per-question `input`. Its `vector_store_ids` are the authoritative remote index binding.
-* `inference.remote_spec` records the compatibility profile, Connection reference, and document-id mapping. There is no endpoint-specific manifest or proprietary response profile.
-* Custom patterns contain no indexing recipe or indexing `pipeline_spec`; the remote application owns its index.
-* Run artifacts preserve the effective search space and any proprietary parameter definitions; the winning request includes selected `rag_options` values. Evaluation artifacts preserve result semantics, search steps, and candidate completeness.
-* Child MLflow runs record the profile, Connection name, non-secret settings, metrics, and artifact references. Credentials are never logged.
-
-The appendix includes a [winning-pattern example](#winning-pattern-example). Normal identity, iteration, duration, and evaluation fields remain required.
-
-Optimization, generated inference notebooks, and Dashboard testing use the **same profile-aware HTTP client and result normalization**. Inference supplies a new question and the saved request settings, resolving credentials through authorized Connection references. Exported patterns retain the configuration and document-id mapping. The saved configuration does not prove that the remote implementation or index has remained unchanged.
-
-| Consumer / artifact | Remote-pattern behavior in v1 |
-| --- | --- |
-| `inference_notebook.ipynb` | Calls the existing endpoint using the saved request and profile. |
-| Dashboard test endpoint | Dispatches through the shared remote client. |
-| `indexing_notebook.ipynb` | Omitted; the remote application already has its index. |
-| `starter_kit.zip` | Not generated for remote patterns; the endpoint is already deployed. |
-| One-click deployment | Unavailable for remote patterns; Dashboard presents remote invocation. |
-
-These consumers support the remote-pattern discriminator. Promotion reuses the existing endpoint and index binding.
+Benchmark questions and instructions go to the selected endpoint. Endpoint access uses authorized Connections and verified TLS. Credentials stay out of request settings, schemas, logs, and artifacts. The endpoint owns downstream tool authorization. Users select a configuration whose data sources and tools are appropriate for the benchmark. Retrieved content follows evaluation-artifact access and retention rules. Model-based evaluators receive the answers and contexts they require.
 
 ## Alternatives
 
 | Alternative | Decision |
 | --- | --- |
-| Responses + `file_search` subset with optional schema-defined `rag_options` | **Selected:** Bounded request-time optimization over an existing index; the application owns retrieval, generation, and parameter semantics. |
-| Remote-endpoint mode in the document optimization pipeline | **Not selected:** Couples endpoint evaluation to corpus, database, and preparation parameters. A dedicated pipeline provides a smaller input contract while reusing optimization and evaluation capabilities. |
-| Built-in indexing pipeline for custom RAG applications | **Deferred:** Adds index preparation, store compatibility, and promotion responsibilities beyond the remote endpoint contract. |
-| Arbitrary schemas, request mappings, and custom response envelopes | **Deferred:** Adds protocol adaptation and normalization beyond typed parameters in a fixed extension field. |
-| AutoRAG-managed REST adapters or externally executed function tools | **Deferred:** Adds protocol mapping or tool-loop ownership to AutoRAG. Customer-managed compatibility proxies and internal endpoint function calling remain allowed. |
-| Custom Files / Vector Stores ingestion APIs | **Deferred:** A separate index protocol is not needed for inference-time optimization. |
-| OCI workers or notebook execution inside optimization | **Deferred:** Adds customer-code execution and dependency management to the optimization runtime. |
-| Broader built-in configuration only | **Insufficient alone:** Does not support existing proprietary RAG services. |
+| Hard-code a single `file_search` profile | A small first implementation, but creates an AutoRAG change for each new tool or provider request shape. Use it as a reference configuration. |
+| Extend the document-indexing pipeline | A dedicated remote pipeline has fewer inputs because the remote endpoint already owns its data and tools. |
+| Execute customer code or tool calls in AutoRAG | Keep tool execution and any protocol translation with the endpoint or its proxy. |
 
-## Security and Privacy Considerations
+## Example
 
-Benchmark questions and configured instructions are sent to the selected RAG endpoint. Endpoint access uses authorized RHOAI Connections and verified TLS; credentials remain outside run configuration, logs, and artifacts. Returned passages follow the existing evaluation-artifact access and retention controls. Where model-based evaluators are enabled, the answers and contexts they require are also sent to the configured evaluator models.
-
-## Risks
-
-* Endpoint ignores standard controls → require documented support and validate selected fields; surface unsupported values as errors.
-* Proprietary parameter definitions drift from endpoint behavior → preserve definitions and winning values with the run; the endpoint validates and honors the declared controls.
-* Missing or unresolvable search results → fail conformance rather than evaluate fabricated contexts.
-* Index and endpoint configuration are incompatible → preflight checks queryability and response conformance; internal collection and embedding compatibility remain the customer's responsibility.
-* Endpoint or index changes after optimization → preserve the winning request and binding; implementation/index immutability remains an external obligation.
-* Provider-specific rankers or score distributions → tune only documented supported controls; compare candidates through local evaluator metrics, not raw retrieval scores.
-
-## Follow-on
-
-* Additional documented Responses controls through explicit profile revisions.
-* Endpoint implementation / index fingerprints for stricter promotion checks.
-* Richer parameter schemas, AutoRAG-managed response adapters, or ingestion APIs only if the bounded contract proves insufficient.
-
-## Related
-
-* [AutoRAG architecture](./ODH-ADR-0001-autorag.md)
-* [Optimization settings and benchmark identity](./ODH-ADR-0002-experiment-settings.md)
-* [RAG templates](./ODH-ADR-0003-rag-templates.md)
-* [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md)
-* [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md)
-* [MLflow integration](./ODH-ADR-0006-mlflow-integration.md)
-* [OpenAI Responses API](https://developers.openai.com/api/reference/python/resources/responses/methods/create) · [File search](https://developers.openai.com/api/docs/guides/tools-file-search)
-
-## Appendix: Examples
-
-### Configuration example
-
-Fixed request settings and independent standard-field candidates:
-
-```json
-{
-  "custom_rag_config": {
-    "request": {
-      "model": "customer-rag",
-      "temperature": 0.2,
-      "max_output_tokens": 1024,
-      "tools": [{
-        "type": "file_search",
-        "vector_store_ids": ["warranty-documents"],
-        "max_num_results": 10,
-        "ranking_options": {"score_threshold": 0.0}
-      }]
-    },
-    "document_keys": {"file-manual": "product-manuals/xr-200-manual.pdf"}
-  },
-  "search_space_config": {
-    "apiVersion": "autorag.opendatahub.io/v1alpha1",
-    "kind": "AutoRAGSearchSpace",
-    "remote_request": {
-      "temperature": [0.0, 0.2],
-      "tools": [{
-        "type": "file_search",
-        "max_num_results": [5, 10, 20],
-        "ranking_options": {"score_threshold": [0.0, 0.2]}
-      }]
-    }
-  }
-}
-```
-
-### Proprietary configuration example
-
-These definitions and candidates extend the configuration above. Complete parameter sets can replace `remote_parameters` as described under [Dependent controls](#dependent-controls).
+A single endpoint advertises `warranty_search` for file search with retrieval evidence and `catalog_search` for MCP with proprietary ranking settings. AutoRAG validates standard Responses fields through the built-in schema.
 
 ```yaml
 custom_rag_config:
-  parameter_schema:
-    reranking_strategy:
-      type: string
-      enum: [none, cross_encoder, reciprocal_rank_fusion]
-    reranking_top_k:
-      type: integer
-      minimum: 1
-      maximum: 100
-
+  contract:
+    name: customer-responses
+    request_schema:
+      properties:
+        model: {enum: [customer-rag, customer-web, customer-catalog]}
+        rag_options:
+          type: object
+          additionalProperties: false
+          required: [hybrid_alpha, reranker_top_k]
+          properties:
+            hybrid_alpha: {type: number, minimum: 0, maximum: 1}
+            reranker_top_k: {type: integer, enum: [10, 20]}
+    supported_configurations:
+      warranty_search:
+        request:
+          model: customer-rag
+          tools:
+            - type: file_search
+              vector_store_ids: [warranty-documents]
+              max_num_results: 10
+          tool_choice: {type: file_search}
+          include: [file_search_call.results]
+        evidence:
+          - output_type: file_search_call
+            results_path: /results
+            text_path: /text
+            document_id_path: /file_id
+      catalog_search:
+        request:
+          model: customer-catalog
+          tools:
+            - type: mcp
+              server_label: catalog
+              server_url: https://retrieval.example.com/mcp
+              require_approval: never
+          rag_options: {hybrid_alpha: 0.5, reranker_top_k: 10}
+  configuration: warranty_search
+  document_keys:
+    file-manual: product-manuals/xr-200-manual.pdf
 search_space_config:
   apiVersion: autorag.opendatahub.io/v1alpha1
   kind: AutoRAGSearchSpace
-  remote_parameters:
-    reranking_strategy: [cross_encoder, reciprocal_rank_fusion]
-    reranking_top_k: [10, 20]
+  remote_request:
+    /tools/0/max_num_results: [5, 10, 20]
 ```
 
-Selected values accompany the standard request under `rag_options`:
+The `warranty_search` sweep has three candidates. The base request is included because 10 appears in the list.
 
-```json
-{
-  "rag_options": {
-    "reranking_strategy": "cross_encoder",
-    "reranking_top_k": 20
-  }
-}
+To use `catalog_search`, set `custom_rag_config.configuration` to `catalog_search` and replace `search_space_config` with the following. The endpoint or proxy implements `rag_options`. Each set supplies a supported pair, and GAM keeps the values in each pair together. MCP tool settings and destination stay fixed.
+
+```yaml
+search_space_config:
+  apiVersion: autorag.opendatahub.io/v1alpha1
+  kind: AutoRAGSearchSpace
+  remote_request_sets:
+    - /rag_options/hybrid_alpha: 0.3
+      /rag_options/reranker_top_k: 10
+    - /rag_options/hybrid_alpha: 0.7
+      /rag_options/reranker_top_k: 20
 ```
 
-### Request and response examples
+Select an answer-based objective for `catalog_search` because it omits evidence rules. A standard-only `web_search` configuration can use the built-in schema alone when the endpoint has no additional constraints.
 
-The Connection supplies the endpoint URL and authentication:
+## Related
 
-```http
-POST {uri}/v1/responses
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-A standard request without proprietary controls:
-
-```json
-{
-  "model": "customer-rag",
-  "input": "What warranty period applies to the XR-200 controller?",
-  "temperature": 0.2,
-  "max_output_tokens": 1024,
-  "stream": false,
-  "store": false,
-  "tool_choice": {"type": "file_search"},
-  "tools": [{
-    "type": "file_search",
-    "vector_store_ids": ["warranty-documents"],
-    "max_num_results": 10,
-    "ranking_options": {"score_threshold": 0.0}
-  }],
-  "include": ["file_search_call.results"]
-}
-```
-
-A completed response with retrieved passages and document identity:
-
-```json
-{
-  "id": "resp_example",
-  "object": "response",
-  "status": "completed",
-  "model": "customer-rag",
-  "output": [
-    {
-      "id": "fs_example",
-      "type": "file_search_call",
-      "status": "completed",
-      "queries": ["XR-200 warranty period"],
-      "results": [{
-        "file_id": "file-manual",
-        "filename": "xr-200-manual.pdf",
-        "text": "Warranty: 24 months from purchase date.",
-        "score": 0.9
-      }]
-    },
-    {
-      "id": "msg_example",
-      "type": "message",
-      "role": "assistant",
-      "status": "completed",
-      "content": [{
-        "type": "output_text",
-        "text": "The warranty period is 24 months.",
-        "annotations": [{
-          "type": "file_citation",
-          "file_id": "file-manual",
-          "filename": "xr-200-manual.pdf",
-          "index": 0
-        }]
-      }]
-    }
-  ],
-  "usage": {"input_tokens": 120, "output_tokens": 20, "total_tokens": 140}
-}
-```
-
-### Winning-pattern example
-
-The custom-specific portion of `pattern.json`, including selected proprietary values:
-
-```json
-{
-  "template_id": "custom:remote_responses",
-  "settings": {
-    "request": {
-      "model": "customer-rag",
-      "temperature": 0.2,
-      "max_output_tokens": 1024,
-      "stream": false,
-      "store": false,
-      "tool_choice": {"type": "file_search"},
-      "tools": [{
-        "type": "file_search",
-        "vector_store_ids": ["warranty-documents"],
-        "max_num_results": 10,
-        "ranking_options": {"score_threshold": 0.0}
-      }],
-      "include": ["file_search_call.results"],
-      "rag_options": {
-        "reranking_strategy": "cross_encoder",
-        "reranking_top_k": 20
-      }
-    }
-  },
-  "inference": {
-    "kind": "remote_responses",
-    "remote_spec": {
-      "profile": "responses.file_search.v1",
-      "connections": {"custom_rag_secret_name": "customer-rag"},
-      "document_keys": {"file-manual": "product-manuals/xr-200-manual.pdf"}
-    }
-  }
-}
-```
+* [Responses API reference](https://developers.openai.com/api/reference/resources/responses/methods/create) · [File search](https://developers.openai.com/api/docs/guides/tools-file-search) · [Web search](https://developers.openai.com/api/docs/guides/tools-web-search) · [MCP tools](https://developers.openai.com/api/docs/guides/tools-connectors-mcp)
+* [Optimization settings and benchmark identity](./ODH-ADR-0002-experiment-settings.md)
+* [RAG pattern inference](./ODH-ADR-0004-rag-pattern-inference.md) · [RAG pattern evaluation](./ODH-ADR-0005-rag-pattern-evaluation.md) · [MLflow integration](./ODH-ADR-0006-mlflow-integration.md)
