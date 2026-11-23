@@ -44,7 +44,7 @@ The first version supports independent benchmark questions and a single final te
 | `request` | Required complete base payload for the mode. |
 | `request_schema` | Optional endpoint-specific constraints on standard fields and the schema for `rag_options` if used. |
 | `tool_schemas` | Optional closed schemas keyed by tool type for provider-defined tool types absent from the built-in schema. Each requires a `type` constant matching its key. |
-| `evidence`, `document_keys` | Optional rules for extracting retrieved passages and mapping local document IDs to canonical benchmark keys. |
+| `evidence` | Optional rules for extracting retrieved passages and their canonical benchmark document keys. |
 | `api_version`, `name` | Optional wire profile and display name. The profile defaults to `responses.v1`. AutoRAG derives the contract digest. |
 
 AutoRAG ships an immutable wire schema for `responses.v1`, including standard fields and tool definitions keyed by type. The effective schema combines the built-in schema, declared additional tool types, and endpoint constraints. Constraints can narrow standard fields. `rag_options` is the top-level opt-in extension for proprietary controls and requires a closed schema when used. Unknown fields and tool types are rejected. The Dashboard and pipeline use the same effective schema, including for fixed runs. The endpoint remains responsible for honoring its supported settings and rejecting unsupported combinations.
@@ -73,7 +73,9 @@ AutoRAG rejects pointers into fixed fields and their descendants, and rejects ob
 
 The configuration may declare how to read evidence from completed Responses output items. Each rule selects an `output_type` from `output[]` and uses a literal JSON Pointer, `results_path`, relative to that item to locate an array. `text_path` and `document_id_path` are relative to each result and must resolve to non-empty strings. Multiple rules can support different tool output types, with one rule per type. JSON Pointers address existing values. If a tool returns a singleton object or a JSON-encoded string, the endpoint or customer proxy must expose a parsed array before AutoRAG can extract evidence.
 
-AutoRAG emits retrieved passages and canonical document identities as `answer_contexts[]` in output-item and result order. The optional `custom_rag_config.document_keys` is a partial map. AutoRAG replaces an ID when it appears in the map and otherwise uses it as a canonical document key. An endpoint may mix mapped local IDs with canonical keys in the same response. The endpoint owner must map every non-canonical local ID and ensure the resulting keys use the benchmark's document namespace. Missing IDs and IDs known to be non-canonical are contract errors. AutoRAG has no complete document catalog, so it can validate the key format but cannot establish that every well-formed key identifies a real document. Retrieved keys may identify relevant or irrelevant documents. Preserve duplicates, step boundaries, and source metadata such as scores or queries when provided. Record `context_source: "retrieval_results"` for this evidence. Concatenated results do not establish a global rank or prove which passages generation used.
+The endpoint or proxy returns the benchmark's canonical document key directly at `document_id_path`. AutoRAG copies it unchanged to `answer_contexts[].document_key` and compares it by exact string equality against the row's `correct_answer_document_keys`. A non-empty string with no match counts as a miss for document-hit metrics, even if it comes from a different namespace. If all returned keys miss, the row records zero document hits. A missing, empty, or non-string ID is a contract error. [Benchmark JSON](./ODH-ADR-0002-experiment-settings.md#benchmark-json)
+
+Emit passages in output-item and result order. Preserve duplicates, step boundaries, and source metadata such as scores or queries when provided. Record `context_source: "retrieval_results"` for this evidence. Concatenated results do not establish a global rank or prove which passages generation used.
 
 | Configuration | Eligible objectives |
 | --- | --- |
@@ -102,7 +104,7 @@ Stop immediately on endpoint authentication or authorization errors or a confirm
 
 * `template_id: "custom:remote_responses"` and `inference.kind: "remote_responses"` select remote invocation. The optimization pipeline generates no indexing recipe, indexing notebook, deployment `runtime_spec`, or starter kit.
 * `settings.request` records the effective non-secret winning HTTP body without per-question `input`, including any tool configuration and fixed data-source bindings.
-* `inference.remote_spec` records the Connection reference, optional display name, and a contract snapshot of the resolved profile, effective request schema, base request, evidence rules, and document mapping. Compute `contract_digest` as SHA-256 over the snapshot serialized as canonical JSON. The run also retains the effective search space, evaluation rows, and candidate completeness. [JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785.html)
+* `inference.remote_spec` records the Connection reference, optional display name, and a contract snapshot of the resolved profile, effective request schema, base request, and evidence rules. Compute `contract_digest` as SHA-256 over the snapshot serialized as canonical JSON. The run also retains the effective search space, evaluation rows, and candidate completeness. [JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785.html)
 * Optimization, generated inference notebooks, and Dashboard testing use the same remote client. Inference supplies a new question, resolves the authorized Connection, and reuses the saved request. The saved configuration supports replay. Endpoint implementation and data may change independently.
 * MLflow uses the parent run and per-pattern child runs from [ADR 0006](./ODH-ADR-0006-mlflow-integration.md). Record the contract digest, optional display name, non-secret settings, metrics, and artifact references.
 
@@ -124,7 +126,7 @@ The file-search and MCP examples are separate templates. Both can use the same e
 
 ### File search with retrieval evidence
 
-This template uses the built-in schema alone. The sweep produces three candidates, including the base request because 10 appears in the list.
+This template uses the built-in schema alone. The endpoint returns the full benchmark key, such as `product-manuals/xr-200-manual.pdf`, in each result's `attributes.doc_id`. `/filename` also works if the endpoint returns the full canonical key in that field. The sweep produces three candidates, including the base request because 10 appears in the list. [Responses API reference](https://developers.openai.com/api/reference/resources/responses/methods/create)
 
 ```yaml
 custom_rag_config:
@@ -141,9 +143,7 @@ custom_rag_config:
     - output_type: file_search_call
       results_path: /results
       text_path: /text
-      document_id_path: /file_id
-  document_keys:
-    file-manual: product-manuals/xr-200-manual.pdf
+      document_id_path: /attributes/doc_id
 search_space_config:
   apiVersion: autorag.opendatahub.io/v1alpha1
   kind: AutoRAGSearchSpace
